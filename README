@@ -1,3 +1,7 @@
 aws-map
 ------------
-Created by the dangit script
+Generate a very basic graphviz/dot map of your AWS deployments.
+
+
+installation
+------------
