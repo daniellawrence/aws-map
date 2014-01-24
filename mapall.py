@@ -2,6 +2,7 @@
 import sys
 import boto.vpc
 import boto.ec2
+import boto.ec2.elb
 import boto.rds
 from local_settings import AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 
@@ -84,10 +85,11 @@ class Instance(Dot):
        self.connection = instance.connection
        self.dns_name = instance.dns_name
 
-
     def draw(self):
         global clusternum
         print 'subgraph cluster%d {' % clusternum
+        if 'Name' in self.tags:
+            print 'label = "%s"' % self.tags['Name']
         print '%s [shape=box, label="%s"];' % (self.mn(self.id), self.id)
 
         extraconns=[]
@@ -182,7 +184,7 @@ class NetworkInterface(Dot):
         pass
 
     def subclusterDraw(self):
-        print '%s [shape=box, label="NIC: %s\n%s\n%s"];' % (self.mn(self.id), self.id, self.private_ip_address, self.status)
+        print '%s [shape=box, label="NIC: %s\n%s"];' % (self.mn(self.id), self.id, self.private_ip_address)
         externallinks=[]
         if options['security_groups']:
             for g in self.groups:
@@ -205,6 +207,21 @@ class InternetGateway(Dot):
         print '%s [shape=box, label="InternetGateway: %s"];' % (self.mn(self.id), self.id)
         for i in self.conns:
           self.connect(self.id, i)
+
+###############################################################################
+###############################################################################
+###############################################################################
+class LoadBalancer(Dot):
+    def __init__(self, lb):
+        self.id = lb.name
+        self.name = lb.name
+        self.instances = lb.instances
+        self.dns_name = lb.dns_name
+
+    def draw(self):
+        print '%s [shape=box, label="ELB: %s"];' % (self.mn(self.id), self.id)
+        for i in self.instances:
+            self.connect(self.id, i.id)
 
 
 ###############################################################################
@@ -272,7 +289,16 @@ def get_all_rds(rds_conn, filter={}):
 
 
 ###############################################################################
+def get_all_elbs(elb_conn, filter={}):
+    elbs = elb_conn.get_all_load_balancers()
+    for elb in elbs:
+        lb = LoadBalancer(elb)
+        objects[lb.id] = lb
+
+
+###############################################################################
 def map_region(region_name):
+    # VPC
     vpc_conn = boto.vpc.connect_to_region(region_name,
         aws_access_key_id = AWS_ACCESS_KEY_ID,
         aws_secret_access_key = AWS_SECRET_ACCESS_KEY)
@@ -285,10 +311,22 @@ def map_region(region_name):
     if options['security_groups']:
         get_all_security_groups(vpc_conn)
 
+    # RDS
     rds_conn = boto.rds.RDSConnection(
         aws_access_key_id = AWS_ACCESS_KEY_ID,
         aws_secret_access_key = AWS_SECRET_ACCESS_KEY)
     get_all_rds(rds_conn)
+
+    # ELB
+    for r in boto.ec2.elb.regions():
+        if r.name==region_name:
+            elb_conn = boto.ec2.elb.ELBConnection(
+                region = r,
+                aws_access_key_id = AWS_ACCESS_KEY_ID,
+                aws_secret_access_key = AWS_SECRET_ACCESS_KEY)
+            get_all_elbs(elb_conn)
+        else:
+            continue
 
 ###############################################################################
 def main():
