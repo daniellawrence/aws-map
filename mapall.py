@@ -225,6 +225,19 @@ class LoadBalancer(Dot):
 
 
 ###############################################################################
+###############################################################################
+###############################################################################
+class Database(Dot):
+    def __init__(self, db):
+        self.id = db.id
+        self.status = db.status
+        self.engine = db.engine
+        self.securityid = db.VpcSecurityGroupId
+
+    def draw(self):
+        print '%s [shape=box, label="DB: %s\n%s\n%s"];'% (self.mn(self.id), self.id, self.engine, self.status)
+
+###############################################################################
 def get_all_internet_gateways(vpc_conn, filters={}):
     igw_list = vpc_conn.get_all_internet_gateways(filters=filters)
     for igw in igw_list:
@@ -285,7 +298,8 @@ def get_all_network_interfaces(vpc_conn, filters={}):
 def get_all_rds(rds_conn, filter={}):
     dbs = rds_conn.get_all_dbinstances()
     for db in dbs:
-        sys.stderr.write("Unhandled RDS: %s\n" % db)
+        rds = Database(db)
+        objects[rds.id] = rds
 
 
 ###############################################################################
@@ -312,7 +326,8 @@ def map_region(region_name):
         get_all_security_groups(vpc_conn)
 
     # RDS
-    rds_conn = boto.rds.RDSConnection(
+    rds_conn = boto.rds.connect_to_region(
+        region_name,
         aws_access_key_id = AWS_ACCESS_KEY_ID,
         aws_secret_access_key = AWS_SECRET_ACCESS_KEY)
     get_all_rds(rds_conn)
