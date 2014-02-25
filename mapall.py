@@ -86,6 +86,8 @@ class Instance(Dot):
 
     def draw(self):
         global clusternum
+        if self.args.vpc and self.vpc_id != self.args.vpc:
+            return
         self.args.outputfile.write('subgraph cluster%d {\n' % clusternum)
         if 'Name' in self.tags:
             self.args.outputfile.write('label = "%s"\n' % self.tags['Name'])
@@ -116,6 +118,8 @@ class Subnet(Dot):
         self.args = args
 
     def draw(self):
+        if self.args.vpc and self.vpc_id != self.args.vpc:
+            return
         self.args.outputfile.write('%s [shape=box, label="%s\n%s"];\n' % (self.mn(self.id), self.id, self.cidr_block))
         self.connect(self.id, self.vpc_id)
 
@@ -199,6 +203,7 @@ class NetworkInterface(Dot):
                 externallinks.append((self.id, g.id))
         return externallinks
 
+
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -213,9 +218,15 @@ class InternetGateway(Dot):
         self.args = args
 
     def draw(self):
-        self.args.outputfile.write('%s [shape=box, label="InternetGateway: %s"];\n' % (self.mn(self.id), self.id))
-        for i in self.conns:
-          self.connect(self.id, i)
+        if self.args.vpc:
+            for i in self.conns[:]:
+                if i != self.args.vpc:
+                    self.conns.remove(i)
+        if self.conns:
+            self.args.outputfile.write('%s [shape=box, label="InternetGateway: %s"];\n' % (self.mn(self.id), self.id))
+            for i in self.conns:
+                self.connect(self.id, i)
+
 
 ###############################################################################
 ###############################################################################
@@ -226,9 +237,12 @@ class LoadBalancer(Dot):
         self.name = lb.name
         self.instances = lb.instances
         self.dns_name = lb.dns_name
+        self.vpc_id = lb.vpc_id
         self.args = args
 
     def draw(self):
+        if self.args.vpc and self.vpc_id != self.args.vpc:
+            return
         self.args.outputfile.write('%s [shape=box, label="ELB: %s"];\n' % (self.mn(self.id), self.id))
         for i in self.instances:
             self.connect(self.id, i.id)
@@ -259,7 +273,7 @@ def get_all_internet_gateways(vpc_conn, args, filters={}):
 
 ###############################################################################
 def get_vpc_list(vpc_conn, args):
-    vpc_list = vpc_conn.get_all_vpcs()
+    vpc_list = vpc_conn.get_all_vpcs(vpc_ids=args.vpc)
     for vpc in vpc_list:
         g = VPC(vpc, args)
         objects[g.id] = g
@@ -326,8 +340,8 @@ def get_all_elbs(elb_conn, args, filter={}):
 def map_region(args):
     # VPC
     vpc_conn = boto.vpc.connect_to_region(args.region,
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+                                          aws_access_key_id=AWS_ACCESS_KEY_ID,
+                                          aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
     get_vpc_list(vpc_conn, args)
     get_all_internet_gateways(vpc_conn, args)
     get_all_network_interfaces(vpc_conn, args)
@@ -340,8 +354,8 @@ def map_region(args):
     # RDS
     rds_conn = boto.rds.connect_to_region(
         args.region,
-        aws_access_key_id = AWS_ACCESS_KEY_ID,
-        aws_secret_access_key = AWS_SECRET_ACCESS_KEY)
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
     get_all_rds(rds_conn, args)
 
     # ELB
@@ -359,7 +373,7 @@ def map_region(args):
 ###############################################################################
 def parseArgs():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--vpc', help="Which VPC to examine [all]")
+    parser.add_argument('--vpc', default=None, help="Which VPC to examine [all]")
     parser.add_argument('--region', default='ap-southeast-2', help="Which region to examine [all]")
     parser.add_argument('--outputfile', default=sys.stdout, type=argparse.FileType('w'), help="Which file to output to (stdout)")
     args = parser.parse_args()
