@@ -6,39 +6,33 @@
 import os
 import sys
 import argparse
-import boto.vpc
-import boto.ec2
-import boto.ec2.elb
-import boto.rds
-
-# Need to create a local_settings.py file with the contents:
-#    AWS_ACCESS_KEY_ID='<YOUR_ACCESS_KEY   >'
-#    AWS_SECRET_ACCESS_KEY='<YOUR SECRET AWS ACCESS KEY            >'
-# These are available from your AWS console
-from local_settings import AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+import json
 
 objects = {}
 clusternum = 0
-
-options = {
-    'security_groups': False
-}
 
 
 ###############################################################################
 ###############################################################################
 ###############################################################################
 class Dot(object):
-    def __init__(self, args):
+    def __init__(self, data, args):
+        self.data = data
         self.args = args
 
     ##########################################################################
-    def draw(self):
-        self.args.outputfile.write('%s [label="%s:%s" %s];\n' % (self.mn(self.id), self.__class__.__name__, self.id, self.image()))
+    def __getitem__(self, key):
+        return self.data.get(key, None)
 
     ##########################################################################
-    def mn(self, s):
+    def draw(self):
+        self.args.output.write('%s [label="%s:%s" %s];\n' % (self.mn(self.name), self.__class__.__name__, self.name, self.image()))
+
+    ##########################################################################
+    def mn(self, s=None):
         """ Munge name to be dottable """
+        if not s:
+            s = self.name
         s = s.replace('-', '_')
         s = s.replace("'", '"')
         return s
@@ -54,13 +48,33 @@ class Dot(object):
             blockstr += '%s=%s ' % (kk, kv)
         if blockstr:
             blockstr = '[ %s ]' % blockstr
-        self.args.outputfile.write("%s -> %s %s;\n" % (self.mn(a), self.mn(b), blockstr))
+        self.args.output.write("%s -> %s %s;\n" % (self.mn(a), self.mn(b), blockstr))
 
     ##########################################################################
-    def image(self):
-        imgfile = os.path.join('images', '%s.png' % self.__class__.__name__)
-        if os.path.exists(imgfile):
-            imagestr = ', image="%s", shape=none ' % imgfile
+    def tags(self, key=None):
+        tagd = {}
+        if 'Tags' not in self.data:
+            return None
+        for t in self['Tags']:
+            tagd[t['Key']] = t['Value']
+        if key:
+            return tagd.get(key, None)
+        else:
+            return tagd
+
+    ##########################################################################
+    def rank(self):
+        self.args.output.write(self.mn())
+
+    ##########################################################################
+    def image(self, names=[]):
+        if not names:
+            names = [self.__class__.__name__]
+        for name in names:
+            imgfile = os.path.join('images', '%s.png' % name)
+            if os.path.exists(imgfile):
+                imagestr = ', image="%s", shape=none ' % imgfile
+                break
         else:
             imagestr = ', shape=box'
         return imagestr
@@ -70,84 +84,149 @@ class Dot(object):
 ###############################################################################
 ###############################################################################
 class Instance(Dot):
+    """
+    u'AmiLaunchIndex': 0
+    u'Architecture': u'x86_64',
+    u'BlockDeviceMappings': [{u'DeviceName': u'/dev/sda1', u'Ebs': {u'Status': u'attached', u'DeleteOnTermination': True, u'VolumeId': u'vol-XXXXXXXX', u'AttachTime': u'2000-01-01T01:00:00.000Z'}}],
+    u'ClientToken': u'stuff',
+    u'EbsOptimized': False,
+    u'Hypervisor': u'xen',
+    u'ImageId': u'ami-XXXXXXXX',
+    u'InstanceId': u'i-XXXXXXXX',
+    u'InstanceType': u't1.micro',
+    u'KernelId': u'aki-XXXXXXXX',
+    u'KeyName': u'KeyName',
+    u'LaunchTime': u'2000-01-01T01:00:00.000Z',
+    u'Monitoring': {u'State': u'disabled'},
+    u'NetworkInterfaces': [{u'Status': u'in-use', u'SourceDestCheck': True, u'VpcId': u'vpc-XXXXXXXX', u'Description': None, u'NetworkInterfaceId': u'eni-XXXXXXXX', u'PrivateIpAddresses': [{u'PrivateDnsName': u'ip-10-1-2-3.ap-southeast-2.compute.internal', u'PrivateIpAddress': u'10.1.2.3', u'Primary': True, u'Association': {u'PublicIp': u'54.1.2.3', u'PublicDnsName': u'ec2-54-1-2-3.ap-southeast-2.compute.amazonaws.com', u'IpOwnerId': u'XXXXXXXXXXXX'}}], u'PrivateDnsName': u'ip-10-1-2-3.ap-southeast-2.compute.internal', u'Attachment': {u'Status': u'attached', u'DeviceIndex': 0, u'DeleteOnTermination': True, u'AttachmentId': u'eni-attach-XXXXXXXX', u'AttachTime': u'2000-01-01T01:00:00.000Z'}, u'Groups': [{u'GroupName': u'XXX_GroupName_XXX', u'GroupId': u'sg-XXXXXXXX'}, {u'GroupName': u'XXX_GroupName_XXX', u'GroupId': u'sg-XXXXXXXX'}, {u'GroupName': u'XXX_GroupName_XXX', u'GroupId': u'sg-XXXXXXXX'}], u'SubnetId': u'subnet-XXXXXXXX', u'OwnerId': u'XXXXXXXXXXXX', u'PrivateIpAddress': u'10.1.2.3', u'Association': {u'PublicIp': u'54.1.2.3', u'PublicDnsName': u'ec2-54-1-2-3.ap-southeast-2.compute.amazonaws.com', u'IpOwnerId': u'XXXXXXXXXXXX'}}],
+    u'Placement': {u'GroupName': None, u'Tenancy': u'default', u'AvailabilityZone': u'ap-southeast-2a'},
+    u'PrivateDnsName': u'ip-10-1-2-3.ap-southeast-2.compute.internal',
+    u'PrivateIpAddress': u'10.1.2.3',
+    u'ProductCodes': [],
+    u'PublicDnsName': u'ec2-54-1-2-3.ap-southeast-2.compute.amazonaws.com',
+    u'PublicIpAddress': u'54.1.2.3',
+    u'RootDeviceName': u'/dev/sda1',
+    u'RootDeviceType': u'ebs',
+    u'SecurityGroups': [{u'GroupName': u'XXX_GroupName_XXX', u'GroupId': u'sg-XXXXXXXX'}, ...
+    u'SourceDestCheck': True,
+    u'State': {u'Code': 16, u'Name': u'running'},
+    u'StateTransitionReason': None,
+    u'SubnetId': u'subnet-XXXXXXXX',
+    u'Tags': [{u'Key': u'aws:cloudformation:stack-id', u'Value': u'Stuff'}, {u'Key': u'aws:cloudformation:stack-name', u'Value': u'Stuff'}, {u'Key': u'Name', u'Value': u'Stuff'}, {u'Key': u'aws:cloudformation:logical-id', u'Value': u'JumpHost'}],
+    u'VirtualizationType': u'paravirtual',
+    u'VpcId': u'vpc-XXXXXXXX',
+    """
     def __init__(self, instance, args):
-        self.id = instance.id
-        self.vpc_id = instance.vpc_id
-        self.tags = instance.tags
-        self.public_dns_name = instance.public_dns_name
-        self.private_ip_address = instance.private_ip_address
-        self.ip_address = instance.ip_address
-        self.image_id = instance.image_id
-        self.subnet_id = instance.subnet_id
-        self.key_name = instance.key_name
-        self.connection = instance.connection
-        self.dns_name = instance.dns_name
+        self.data = instance
+        self.name = instance['InstanceId']
         self.args = args
+
+    def inVpc(self, vpc=None):
+        if vpc and self['VpcId'] != vpc:
+            return False
+        return True
+
+    def rank(self):
+        if self.inVpc(self.args.vpc):
+            self.args.output.write("%s;" % self.mn())
 
     def draw(self):
         global clusternum
-        if self.args.vpc and self.vpc_id != self.args.vpc:
+        if not self.inVpc(self.args.vpc):
             return
-        self.args.outputfile.write('subgraph cluster%d {\n' % clusternum)
-        if 'Name' in self.tags:
-            self.args.outputfile.write('label = "%s"\n' % self.tags['Name'])
-        self.args.outputfile.write('%s [label="%s" %s];\n' % (self.mn(self.id), self.id, self.image()))
+        self.args.output.write('// Instance %s\n' % self.name)
+        self.args.output.write('subgraph cluster_%d {\n' % clusternum)
+        if self.tags('Name'):
+            self.args.output.write('label = "%s"\n' % self.tags('Name'))
+        self.args.output.write('%s [label="%s" %s];\n' % (self.mn(self.name), self.name, self.image()))
 
         extraconns = []
         for o in objects.values():
-            if o.partOfInstance(self.id):
-                self.connect(self.id, o.id)
+            if o.partOfInstance(self.name):
+                self.connect(self.name, o.name)
                 extraconns = o.subclusterDraw()
-        self.args.outputfile.write('}\n')
-        if self.subnet_id:
-            self.connect(self.id, self.subnet_id)
+        self.args.output.write('graph [style=dotted]\n')
+        self.args.output.write('}\n')   # End subgraph cluster
+        if self['SubnetId']:
+            self.connect(self.name, self['SubnetId'])
         for ic, ec in extraconns:
             self.connect(ic, ec)
         clusternum += 1
+        if self.args.security:
+            for sg in self['SecurityGroups']:
+                self.connect(self.name, sg['GroupId'])
 
 
 ###############################################################################
 ###############################################################################
 ###############################################################################
 class Subnet(Dot):
+    """
+    u'AvailabilityZone': u'ap-southeast-2a',
+    u'AvailableIpAddressCount': 10,
+    u'CidrBlock': u'10.1.2.3/28'
+    u'DefaultForAz': False,
+    u'MapPublicIpOnLaunch': False,
+    u'State': u'available',
+    u'SubnetId': u'subnet-XXXXXXXX',
+    u'Tags': [{u'Key': u'aws:cloudformation:stack-id', u'Value': u'arn:aws:cloudformation:ap-southeast-2:XXXXXXXXXXXX:stack/Stuff'}, {u'Key': u'aws:cloudformation:stack-name', u'Value': u'Stuff'}, {u'Key': u'aws:cloudformation:logical-id', u'Value': u'SubnetA3'}],
+    u'VpcId': u'vpc-XXXXXXXX',
+    """
     def __init__(self, subnet, args):
-        self.id = subnet.id
-        self.vpc_id = subnet.vpc_id
-        self.cidr_block = subnet.cidr_block
-        self.availability_zone = subnet.availability_zone
+        self.data = subnet
+        self.name = subnet['SubnetId']
         self.args = args
 
+    def inVpc(self, vpc):
+        if vpc and self['VpcId'] != vpc:
+            return False
+        return True
+
+    def rank(self):
+        if self.inVpc(self.args.vpc):
+            self.args.output.write("%s;" % self.mn())
+
     def draw(self):
-        if self.args.vpc and self.vpc_id != self.args.vpc:
+        if not self.inVpc(self.args.vpc):
             return
-        self.args.outputfile.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.id), self.id, self.cidr_block, self.image()))
-        self.connect(self.id, self.vpc_id)
+        self.args.output.write('// Subnet %s\n' % self.name)
+        self.args.output.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self['CidrBlock'], self.image()))
+        self.connect(self.name, self['VpcId'])
 
 
 ###############################################################################
 ###############################################################################
 ###############################################################################
 class Volume(Dot):
+    """
+    u'Attachments': [{u'AttachTime': u'2000-01-01T01:00:00.000Z', u'InstanceId': u'i-XXXXXXXX', u'VolumeId': u'vol-XXXXXXXX', u'State': u'attached', u'DeleteOnTermination': True, u'Device': u'/dev/sda1'}],
+    u'AvailabilityZone': u'ap-southeast-2b',
+    u'CreateTime': u'2000-01-01T01:00:00.000Z',
+    u'Size': 6
+    u'SnapshotId': u'snap-XXXXXXXX',
+    u'State': u'in-use',
+    u'VolumeId': u'vol-XXXXXXXX',
+    u'VolumeType': u'standard',
+    """
     def __init__(self, vol, args):
-        self.id = vol.id
-        self.size = vol.size
-        self.region = vol.region
-        self.status = vol.status
-        self.tags = vol.tags
-        self.attachment_state = vol.attachment_state()
-        self.volume_state = vol.volume_state()
-        self.instance_id = vol.attach_data.instance_id
+        self.data = vol
+        self.name = vol['VolumeId']
         self.args = args
 
     def partOfInstance(self, instid):
-        return instid == self.instance_id
+        for a in self['Attachments']:
+            if a['InstanceId'] == instid:
+                return True
+        return False
 
     def draw(self):
-        if not self.attachment_state:
-            self.args.outputfile.write('%s [label="Unattached Volume:%s\n%s Gb" %s];\n' % (self.mn(self.id), self.id, self.size, self.image()))
+        if self['State'] not in ('in-use',):
+            if self.args.vpc:
+                return
+            self.args.output.write('%s [label="Unattached Volume:%s\n%s Gb" %s];\n' % (self.mn(self.name), self.name, self['Size'], self.image()))
 
     def subclusterDraw(self):
-        self.args.outputfile.write('%s [shape=box, label="%s\n%s Gb"];\n' % (self.mn(self.id), self.id, self.size))
+        self.args.output.write('%s [shape=box, label="%s\n%s Gb"];\n' % (self.mn(self.name), self.name, self['Size']))
         return []
 
 
@@ -155,52 +234,173 @@ class Volume(Dot):
 ###############################################################################
 ###############################################################################
 class SecurityGroup(Dot):
+    """
+    u'Description': u'SG Description',
+    u'GroupId': u'sg-XXXXXXXX'
+    u'GroupName': u'XXX_GroupName_XXX',
+    u'IpPermissions': [{u'ToPort': 443, u'IpProtocol': u'tcp', u'IpRanges': [{u'CidrIp': u'0.0.0.0/0'}], u'UserIdGroupPairs': [], u'FromPort': 443}],
+    u'IpPermissionsEgress': [{u'ToPort': 4502, u'IpProtocol': u'tcp', u'IpRanges': [{u'CidrIp': u'0.0.0.0/0'}], u'UserIdGroupPairs': [], u'FromPort': 4502}],
+    u'OwnerId': u'XXXXXXXXXXXX',
+    u'Tags': [{u'Key': u'Key', u'Value': u'Value'}, ...
+    u'VpcId': u'vpc-XXXXXXXX',
+    """
     def __init__(self, sg, args):
-        self.id = sg.id
-        self.name = sg.name
+        self.data = sg
+        self.name = sg['GroupId']
         self.args = args
 
     def draw(self):
-        self.args.outputfile.write('%s [label="SG: %s" %s];\n' % (self.mn(self.id), self.name, self.image()))
+        if self.args.vpc and self['VpcId'] != self.args.vpc:
+            return
+
+        portstr = self.permstring(self['IpPermissions'])
+        eportstr = self.permstring(self['IpPermissionsEgress'])
+
+        tportstr = []
+        if portstr:
+            tportstr.append("Ingress: %s" % portstr)
+        if eportstr:
+            tportstr.append("Egress: %s" % eportstr)
+        self.args.output.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (self.mn(self.name), self.name, self["Description"], "\n".join(tportstr), self.image()))
+
+    def permstring(self, obj):
+        """
+        Convert the permutations and combinations into a sensible output
+        """
+        ans = []
+        if not obj:
+            return ''
+        for ip in obj:
+            if ip['UserIdGroupPairs']:
+                for pair in ip['UserIdGroupPairs']:
+                    self.connect(self.name, pair['GroupId'])
+            if 'FromPort' in ip and ip['FromPort']:
+                ipranges = []
+                for ipr in ip['IpRanges']:
+                    if 'CidrIp' in ipr:
+                        ipranges.append(ipr['CidrIp'])
+                iprangestr = ';'.join(ipranges)
+                ans.append("%s %s->%s/%s" % (iprangestr, ip['FromPort'], ip['ToPort'], ip['IpProtocol']))
+        return " ".join(ans)
 
 
 ###############################################################################
 ###############################################################################
 ###############################################################################
 class VPC(Dot):
+    """
+    u'CidrBlock': u'172.1.2.3/16',
+    u'DhcpOptionsId': u'dopt-XXXXXXXX',
+    u'InstanceTenancy': u'default',
+    u'IsDefault': True,
+    u'State': u'available',
+    u'VpcId': u'vpc-XXXXXXXX',
+    """
     def __init__(self, vpc, args):
-        self.id = vpc.id
-        self.state = vpc.state
-        self.tags = vpc.tags
+        self.data = vpc
+        self.name = vpc['VpcId']
         self.args = args
+
+    def inVpc(self, vpc):
+        if vpc and self.name != vpc:
+            return False
+        return True
+
+    def rank(self):
+        if self.inVpc(self.args.vpc):
+            self.args.output.write("%s;" % self.mn())
+
+    def draw(self):
+        if not self.inVpc(self.args.vpc):
+            return
+        self.args.output.write('%s [label="%s:%s" %s];\n' % (self.mn(self.name), self.__class__.__name__, self.name, self.image()))
+
+
+###############################################################################
+###############################################################################
+###############################################################################
+class RouteTable(Dot):
+    """
+    u'Associations': [{u'SubnetId': u'subnet-XXXXXXXX', u'RouteTableAssociationId': u'rtbassoc-XXXXXXXX', u'RouteTableId': u'rtb-XXXXXXXX'}, ...]
+    u'PropagatingVgws': [],
+    u'RouteTableId': u'rtb-XXXXXXXX',
+    u'Routes': [{u'GatewayId': u'local', u'DestinationCidrBlock': u'10.1.2.3/23', u'State': u'active', u'Origin': u'CreateRouteTable'}, {u'Origin': u'CreateRoute', u'DestinationCidrBlock': u'0.0.0.0/0', u'InstanceId': u'i-XXXXXXXX', u'NetworkInterfaceId': u'eni-XXXXXXXX', u'State': u'active', u'InstanceOwnerId': u'XXXXXXXXXXXX'}]
+    u'Tags': [{u'Key': u'Key', u'Value': u'Value'}, ...
+    u'VpcId': u'vpc-XXXXXXXX',
+
+    """
+    def __init__(self, rt, args):
+        self.data = rt
+        self.args = args
+        self.name = self['RouteTableId']
+
+    def rank(self):
+        if self.inVpc(self.args.vpc):
+            self.args.output.write("%s;" % self.mn())
+
+    def inVpc(self, vpc):
+        if vpc and self['VpcId']!=vpc:
+            return False
+        return True
+
+    def draw(self):
+        if not self.inVpc(self.args.vpc):
+            return
+        routelist=[]
+        for rt in self['Routes']:
+            if 'DestinationCidrBlock' in rt:
+                routelist.append(rt['DestinationCidrBlock'])
+        self.args.output.write('%s [label="RT: %s\n%s" %s];\n' % (self.mn(), self.name, ";".join(routelist), self.image()))
+        for ass in self['Associations']:
+            if 'SubnetId' in ass:
+                self.connect(self.name, ass['SubnetId'])
+        for rt in self['Routes']:
+            if 'InstanceId' in rt:
+                self.connect(self.name, rt['InstanceId'])
+            elif 'NetworkInterfaceId' in rt:
+                self.connect(self.name, rt['NetworkInterfaceId'])
 
 
 ###############################################################################
 ###############################################################################
 ###############################################################################
 class NetworkInterface(Dot):
+    """
+    u'Association': {u'PublicIp': u'54.1.2.3', u'IpOwnerId': u'amazon'}
+    u'Attachment': {u'Status': u'attached', u'DeviceIndex': 0, u'AttachTime': u'2000-01-01T01:00:00.000Z', u'InstanceId': u'i-XXXXXXXX', u'DeleteOnTermination': True, u'AttachmentId': u'eni-attach-XXXXXXXX', u'InstanceOwnerId': u'XXXXXXXXXXXX'},
+    u'AvailabilityZone': u'ap-southeast-2b',
+    u'Description': None,
+    u'Groups': [{u'GroupName': u'XXX_GroupName_XXX', u'GroupId': u'sg-XXXXXXXX'}],
+    u'MacAddress': u'aa:bb:cc:dd:ee:ff',
+    u'NetworkInterfaceId': u'eni-XXXXXXXX',
+    u'OwnerId': u'XXXXXXXXXXXX',
+    u'PrivateDnsName': u'ip-172-1-2-3.ap-southeast-2.compute.internal',
+    u'PrivateIpAddress': u'172.1.2.3',
+    u'PrivateIpAddresses': [{u'PrivateDnsName': u'ip-172-1-2-3.ap-southeast-2.compute.internal', u'PrivateIpAddress': u'172.1.2.3', u'Primary': True, u'Association': {u'PublicIp': u'54.1.2.3', u'IpOwnerId': u'amazon'}}],
+    u'RequesterManaged': False,
+    u'SourceDestCheck': True,
+    u'Status': u'in-use',
+    u'SubnetId': u'subnet-XXXXXXXX',
+    u'TagSet': [],
+    u'VpcId': u'vpc-XXXXXXXX',
+    """
     def __init__(self, nic, args):
-        self.id = nic.id
-        self.subnet_id = nic.subnet_id
-        self.privateDnsName = nic.privateDnsName
-        self.private_ip_address = nic.private_ip_address
-        self.status = nic.status
-        self.groups = nic.groups
-        self.instance_id = nic.attachment.instance_id
+        self.data = nic
         self.args = args
+        self.name = self['NetworkInterfaceId']
 
     def partOfInstance(self, instid):
-        return instid == self.instance_id
+        return self['Attachment'].get('InstanceId', None) == instid
 
     def draw(self):
         pass
 
     def subclusterDraw(self):
-        self.args.outputfile.write('%s [label="NIC: %s\n%s" %s];\n' % (self.mn(self.id), self.id, self.private_ip_address, self.image()))
+        self.args.output.write('%s [label="NIC: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['PrivateIpAddress'], self.image()))
         externallinks = []
-        if options['security_groups']:
-            for g in self.groups:
-                externallinks.append((self.id, g.id))
+        if self.args.security:
+            for g in self['Groups']:
+                externallinks.append((self.name, g['GroupId']))
         return externallinks
 
 
@@ -208,14 +408,26 @@ class NetworkInterface(Dot):
 ###############################################################################
 ###############################################################################
 class InternetGateway(Dot):
+    """
+    u'Attachments': [{u'State': u'available', u'VpcId': u'vpc-XXXXXXXX'}],
+    u'InternetGatewayId': u'igw-3a121a58',
+    u'Tags': [{u'Key': u'aws:cloudformation:stack-id', u'Value': u'arn:aws:cloudformation:ap-southeast-2:XXXXXXXXXXXX:stack/Stuff'}, {u'Key': u'aws:cloudformation:logical-id', u'Value': u'InternetGateway'}, {u'Key': u'aws:cloudformation:stack-name', u'Value': u'Stuff'}],
+    """
     def __init__(self, igw, args):
-        self.id = igw.id
-        self.connection = igw.connection
-        self.tags = igw.tags
+        self.data = igw
+        self.name = igw['InternetGatewayId']
         self.conns = []
-        for i in igw.attachments:
-            self.conns.append(i.vpc_id)
+        for i in igw['Attachments']:
+            self.conns.append(i['VpcId'])
         self.args = args
+
+    def rank(self):
+        if self.args.vpc:
+            for i in self.conns[:]:
+                if i != self.args.vpc:
+                    self.conns.remove(i)
+        if self.conns:
+            self.args.output.write("%s;" % self.mn())
 
     def draw(self):
         if self.args.vpc:
@@ -223,160 +435,292 @@ class InternetGateway(Dot):
                 if i != self.args.vpc:
                     self.conns.remove(i)
         if self.conns:
-            self.args.outputfile.write('%s [label="InternetGateway: %s" %s];\n' % (self.mn(self.id), self.id, self.image))
+            self.args.output.write('%s [label="InternetGateway: %s" %s];\n' % (self.mn(self.name), self.name, self.image()))
             for i in self.conns:
-                self.connect(self.id, i)
+                self.connect(self.name, i)
 
 
 ###############################################################################
 ###############################################################################
 ###############################################################################
 class LoadBalancer(Dot):
+    """
+    u'AvailabilityZones': [u'ap-southeast-2b', u'ap-southeast-2a'],
+    u'BackendServerDescriptions': [],
+    u'CanonicalHostedZoneName': u'Stuff',
+    u'CanonicalHostedZoneNameID': u'XXXXXXXXXXXXXX',
+    u'CreatedTime': u'2000-01-01T01:00:00.300Z',
+    u'DNSName': u'Stuff',
+    u'HealthCheck': {u'HealthyThreshold': 2, u'Interval': 30, u'Target': u'TCP:7990', u'Timeout': 5, u'UnhealthyThreshold': 2},
+    u'Instances': [{u'InstanceId': u'i-XXXXXXXX'}],
+    u'ListenerDescriptions': [{u'Listener': {u'InstancePort': 7990, u'Protocol': u'HTTPS', u'LoadBalancerPort': 443, u'SSLCertificateId': u'arn:aws:iam::XXXXXXXXXXXX:server-certificate/GenericSSL', u'InstanceProtocol': u'HTTP'}, u'PolicyNames': [u'ELBSecurityPolicy-2011-08']}, {u'Listener': {u'InstancePort': 7999, u'LoadBalancerPort': 7999, u'Protocol': u'TCP', u'InstanceProtocol': u'TCP'}, u'PolicyNames': []}],
+    u'LoadBalancerName': u'Stuff',
+    u'Policies': {u'LBCookieStickinessPolicies': [], u'AppCookieStickinessPolicies': [], u'OtherPolicies': [u'ELBSecurityPolicy-2011-08']},
+    u'Scheme': u'internet-facing',
+    u'SecurityGroups': [u'sg-XXXXXXXX'],
+    u'SourceSecurityGroup': {u'OwnerAlias': u'XXXXXXXXXXXX', u'GroupName': u'XXX_GroupName_XXX'}
+    u'Subnets': [u'subnet-XXXXXXXX', u'subnet-XXXXXXXX'],
+    u'VPCId': u'vpc-XXXXXXXX',
+    """
     def __init__(self, lb, args):
-        self.id = lb.name
-        self.name = lb.name
-        self.instances = lb.instances
-        self.dns_name = lb.dns_name
-        self.vpc_id = lb.vpc_id
+        self.data = lb
+        self.name = lb[u'LoadBalancerName']
         self.args = args
 
+    def inVpc(self, vpc):
+        if vpc and self['VPCId'] != vpc:
+            return False
+        return True
+
+    def rank(self):
+        if self.inVpc(self.args.vpc):
+            self.args.output.write("%s;" % self.mn())
+
     def draw(self):
-        if self.args.vpc and self.vpc_id != self.args.vpc:
+        if not self.inVpc(self.args.vpc):
             return
-        self.args.outputfile.write('%s [label="ELB: %s" %s];\n' % (self.mn(self.id), self.id, self.image()))
-        for i in self.instances:
-            self.connect(self.id, i.id)
+        ports = []
+        for l in self['ListenerDescriptions']:
+            x = l['Listener']
+            ports.append("%s/%s -> %s/%s" % (x['LoadBalancerPort'], x['Protocol'], x['InstancePort'], x['InstanceProtocol']))
+
+        self.args.output.write('%s [label="ELB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, "\n".join(ports), self.image()))
+        for i in self['Instances']:
+            self.connect(self.name, i['InstanceId'])
+        for s in self['Subnets']:
+            self.connect(self.name, s)
+        if self.args.security:
+            for sg in self['SecurityGroups']:
+                self.connect(self.name, sg)
 
 
 ###############################################################################
 ###############################################################################
 ###############################################################################
 class Database(Dot):
+    """
+    u'AllocatedStorage': 5,
+    u'AutoMinorVersionUpgrade': True,
+    u'AvailabilityZone': u'ap-southeast-2a',
+    u'BackupRetentionPeriod': 0,
+    u'DBInstanceClass': u'db.t1.micro',
+    u'DBInstanceIdentifier': u'devapps'
+    u'DBInstanceStatus': u'available',
+    u'DBName': u'crowd',
+    u'DBParameterGroups': [{u'DBParameterGroupName': u'XXX_GroupName_XXX', u'ParameterApplyStatus': u'in-sync'}],
+    u'DBSecurityGroups': [],
+    u'DBSubnetGroup': {
+        u'DBSubnetGroupDescription': u'default',
+        u'DBSubnetGroupName': u'default',
+        u'SubnetGroupStatus': u'Complete'
+        u'Subnets': [
+            {
+                u'SubnetStatus': u'Active',
+                u'SubnetIdentifier': u'subnet-XXXXXXXX',
+                u'SubnetAvailabilityZone': {u'Name': u'ap-southeast-2b', u'ProvisionedIopsCapable': False}
+            },
+            ...
+            ],
+        u'VpcId': u'vpc-XXXXXXXX',
+        },
+    u'Endpoint': {u'Port': 3306, u'Address': u'devapps.csgxwe0psnca.ap-southeast-2.rds.amazonaws.com'},
+    u'Engine': u'mysql',
+    u'EngineVersion': u'5.6.13',
+    u'InstanceCreateTime': u'2000-01-01T01:00:00.275Z',
+    u'LicenseModel': u'general-public-license',
+    u'MasterUsername': u'rootmaster',
+    u'MultiAZ': False,
+    u'OptionGroupMemberships': [{u'Status': u'in-sync', u'OptionGroupName': u'default:mysql-5-6'}],
+    u'PendingModifiedValues': {},
+    u'PreferredBackupWindow': u'18:37-19:07',
+    u'PreferredMaintenanceWindow': u'sat:15:17-sat:15:47',
+    u'PubliclyAccessible': True,
+    u'ReadReplicaDBInstanceIdentifiers': [],
+    u'VpcSecurityGroups': [{u'Status': u'active', u'VpcSecurityGroupId': u'sg-XXXXXXXX'}],
+    """
     def __init__(self, db, args):
-        self.id = db.id
-        self.status = db.status
-        self.engine = db.engine
-        self.securityid = db.VpcSecurityGroupId
+        self.data = db
+        self.name = db['DBInstanceIdentifier']
         self.args = args
 
+    def inVpc(self, vpc):
+        if vpc and self['DBSubnetGroup']['VpcId'] != vpc:
+            return False
+        return True
+
+    def rank(self):
+        if self.inVpc(self.args.vpc):
+            self.args.output.write("%s;" % self.mn())
+
     def draw(self):
-        self.args.outputfile.write('%s [label="DB: %s\n%s\n%s" %s];\n' % (self.mn(self.id), self.id, self.engine, self.status, self.image()))
+        if not self.inVpc(self.args.vpc):
+            return
+        self.args.output.write('// Database %s\n' % self.name)
+        imgstr = self.image(["Database-%s" % self['Engine'], 'Database'])
+        self.args.output.write('%s [label="DB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['Engine'], imgstr))
+        for subnet in self['DBSubnetGroup']['Subnets']:
+            if subnet['SubnetStatus'] == 'Active':
+                self.connect(self.name, subnet['SubnetIdentifier'])
+        if self.args.security:
+            for sg in self['VpcSecurityGroups']:
+                self.connect(self.name, sg['VpcSecurityGroupId'])
 
 
 ###############################################################################
-def get_all_internet_gateways(vpc_conn, args, filters={}):
-    igw_list = vpc_conn.get_all_internet_gateways(filters=filters)
-    for igw in igw_list:
+def elbcmd(cmd):
+    return awscmd(cmd, 'elb')
+
+
+###############################################################################
+def rdscmd(cmd):
+    return awscmd(cmd, 'rds')
+
+
+###############################################################################
+def ec2cmd(cmd):
+    return awscmd(cmd, 'ec2')
+
+
+###############################################################################
+def awscmd(cmd, area='ec2'):
+    with os.popen("aws %s %s" % (area, cmd)) as f:
+        data = f.read()
+    return json.loads(data)
+
+
+###############################################################################
+def get_all_internet_gateways(args):
+    if args.verbose:
+        sys.stderr.write("Getting internet gateways\n")
+    igw_data = ec2cmd("describe-internet-gateways")['InternetGateways']
+    for igw in igw_data:
         g = InternetGateway(igw, args)
-        objects[g.id] = g
+        objects[g.name] = g
 
 
 ###############################################################################
-def get_vpc_list(vpc_conn, args):
-    vpc_list = vpc_conn.get_all_vpcs(vpc_ids=args.vpc)
-    for vpc in vpc_list:
+def get_vpc_list(args):
+    vpc_data = ec2cmd("describe-vpcs")['Vpcs']
+    for vpc in vpc_data:
+        if args.verbose:
+            sys.stderr.write("VPC: %s\n" % vpc['VpcId'])
         g = VPC(vpc, args)
-        objects[g.id] = g
+        objects[g.name] = g
 
 
 ###############################################################################
-def get_all_instances(vpc_conn, args, filters={}):
-    reservation_list = vpc_conn.get_all_instances(filters=filters)
+def get_all_instances(args):
+    if args.verbose:
+        sys.stderr.write("Getting instances\n")
+    reservation_list = ec2cmd("describe-instances")['Reservations']
     for reservation in reservation_list:
-        for instance in reservation.instances:
+        for instance in reservation['Instances']:
             i = Instance(instance, args)
-            objects[i.id] = i
+            objects[i.name] = i
 
 
 ###############################################################################
-def get_all_subnets(vpc_conn, args, filters={}):
-    subnets = vpc_conn.get_all_subnets(filters=filters)
+def get_all_subnets(args):
+    if args.verbose:
+        sys.stderr.write("Getting subnets\n")
+    subnets = ec2cmd("describe-subnets")['Subnets']
     for subnet in subnets:
         s = Subnet(subnet, args)
-        objects[s.id] = s
+        objects[s.name] = s
 
 
 ###############################################################################
-def get_all_volumes(vpc_conn, args, filters={}):
-    volumes = vpc_conn.get_all_volumes(filters=filters)
-    for vol in volumes:
-        v = Volume(vol, args)
-        objects[v.id] = v
+def get_all_volumes(args):
+    if args.verbose:
+        sys.stderr.write("Getting volumes\n")
+    volumes = ec2cmd("describe-volumes")['Volumes']
+    for volume in volumes:
+        v = Volume(volume, args)
+        objects[v.name] = v
 
 
 ###############################################################################
-def get_all_security_groups(vpc_conn, args, filters={}):
-    sgs = vpc_conn.get_all_security_groups(filters=filters)
+def get_all_security_groups(args):
+    if args.verbose:
+        sys.stderr.write("Getting security groups\n")
+    sgs = ec2cmd("describe-security-groups")['SecurityGroups']
     for sg in sgs:
         s = SecurityGroup(sg, args)
-        objects[s.id] = s
+        objects[s.name] = s
 
 
 ###############################################################################
-def get_all_network_interfaces(vpc_conn, args, filters={}):
-    nics = vpc_conn.get_all_network_interfaces(filters=filters)
+def get_all_route_tables(args):
+    if args.verbose:
+        sys.stderr.write("Getting route tables\n")
+    rts = ec2cmd('describe-route-tables')['RouteTables']
+    for rt in rts:
+        r = RouteTable(rt, args)
+        objects[r.name] = r
+
+
+###############################################################################
+def get_all_network_interfaces(args):
+    if args.verbose:
+        sys.stderr.write("Getting NICs\n")
+    nics = ec2cmd('describe-network-interfaces')['NetworkInterfaces']
     for nic in nics:
         n = NetworkInterface(nic, args)
-        objects[n.id] = n
+        objects[n.name] = n
 
 
 ###############################################################################
-def get_all_rds(rds_conn, args, filter={}):
-    dbs = rds_conn.get_all_dbinstances()
+def get_all_rds(args):
+    if args.verbose:
+        sys.stderr.write("Getting Databases\n")
+    nics = ec2cmd('describe-network-interfaces')['NetworkInterfaces']
+    dbs = rdscmd('describe-db-instances')['DBInstances']
     for db in dbs:
         rds = Database(db, args)
-        objects[rds.id] = rds
+        objects[rds.name] = rds
 
 
 ###############################################################################
-def get_all_elbs(elb_conn, args, filter={}):
-    elbs = elb_conn.get_all_load_balancers()
+def get_all_elbs(args):
+    if args.verbose:
+        sys.stderr.write("Getting Load Balancers\n")
+    elbs = elbcmd('describe-load-balancers')['LoadBalancerDescriptions']
     for elb in elbs:
         lb = LoadBalancer(elb, args)
-        objects[lb.id] = lb
+        objects[lb.name] = lb
 
 
 ###############################################################################
 def map_region(args):
-    # VPC
-    vpc_conn = boto.vpc.connect_to_region(args.region,
-                                          aws_access_key_id=AWS_ACCESS_KEY_ID,
-                                          aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
-    get_vpc_list(vpc_conn, args)
-    get_all_internet_gateways(vpc_conn, args)
-    get_all_network_interfaces(vpc_conn, args)
-    get_all_instances(vpc_conn, args)
-    get_all_subnets(vpc_conn, args)
-    get_all_volumes(vpc_conn, args)
-    if options['security_groups']:
-        get_all_security_groups(vpc_conn, args)
+    # EC2
+    get_vpc_list(args)
+    get_all_internet_gateways(args)
+    get_all_network_interfaces(args)
+    get_all_instances(args)
+    get_all_subnets(args)
+    get_all_volumes(args)
+    get_all_route_tables(args)
+    if args.security:
+        get_all_security_groups(args)
 
     # RDS
-    rds_conn = boto.rds.connect_to_region(
-        args.region,
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
-    get_all_rds(rds_conn, args)
+    get_all_rds(args)
 
     # ELB
-    for r in boto.ec2.elb.regions():
-        if r.name == args.region:
-            elb_conn = boto.ec2.elb.ELBConnection(
-                region=r,
-                aws_access_key_id=AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
-            get_all_elbs(elb_conn, args)
-        else:
-            continue
+    get_all_elbs(args)
 
 
 ###############################################################################
 def parseArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument('--vpc', default=None, help="Which VPC to examine [all]")
-    parser.add_argument('--region', default='ap-southeast-2', help="Which region to examine [all]")
-    parser.add_argument('--outputfile', default=sys.stdout, type=argparse.FileType('w'), help="Which file to output to (stdout)")
+    #parser.add_argument('--region', default='ap-southeast-2', help="Which region to examine [all]")
+    parser.add_argument('--output', default=sys.stdout, type=argparse.FileType('w'), help="Which file to output to (stdout)")
+    parser.add_argument('--security', default=False, action='store_true', help="Draw in security groups")
+    parser.add_argument('-v', '--verbose', default=False, action='store_true', help="Print some details")
     args = parser.parse_args()
+    if args.vpc and not args.vpc.startswith('vpc-'):
+        args.vpc = "vpc-%s" % args.vpc
     return args
 
 
@@ -384,12 +728,26 @@ def parseArgs():
 def main():
     args = parseArgs()
     map_region(args)
-    args.outputfile.write("digraph G {\n")
-    args.outputfile.write('overlap=false\n')
-    args.outputfile.write('ranksep=1.6\n')
-    for obj in objects.values():
+    args.output.write("digraph G {\n")
+    args.output.write('overlap=false\n')
+    args.output.write('ranksep=1.6\n')
+
+    # Draw all the objects
+    for obj in sorted(objects.values()):
         obj.draw()
-    args.outputfile.write("}\n")
+
+    # Assign Ranks
+    for objtype in [Database, LoadBalancer, Subnet, Instance, VPC, InternetGateway]:
+        args.output.write('// Rank %s\n' % objtype.__name__)
+        args.output.write('rank_%s [style=invisible]\n' % objtype.__name__)
+        args.output.write('{ rank=same; rank_%s; ' % objtype.__name__)
+        for obj in sorted(objects.values()):
+            if obj.__class__ == objtype:
+                obj.rank()
+        args.output.write('}\n')
+    args.output.write("rank_Database -> rank_LoadBalancer -> rank_Subnet -> rank_Instance -> rank_VPC -> rank_InternetGateway [style=invis];\n")
+
+    args.output.write("}\n")
 
 
 ###############################################################################
