@@ -13,6 +13,6 @@ running
 -------
 
 ```
-$ ./main.py | dot -Tpng > aws-map.png
+$ ./mapall.py | dot -Tpng > aws-map.png
 $ eog aws-map.png
 ```
