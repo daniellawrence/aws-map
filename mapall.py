@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import os
 import sys
 import argparse
 import boto.vpc
@@ -6,17 +7,6 @@ import boto.ec2
 import boto.ec2.elb
 import boto.rds
 from local_settings import AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-
-image_root = '/home/dannyla/Downloads/AWS_Simple_Icons_svg_eps'
-
-image_map = {
-    'Storage': '/Storage & Content Delivery/SVG/Storage & Content Delivery_Amazon EBS Volume.svg.png',
-    # 'Instance': '/Compute & Networking/SVG/Compute & Networking copy_Amazon EC2--.svg.png',
-    'Instance': '/Compute & Networking/SVG/Compute & Networking copy_Amazon EC2 Instances.svg.png',
-    'Subnet': '',  # /Compute & Networking/SVG/Compute & Networking copy_Elastic Network Instance.svg.png',
-    'Network': '/Compute & Networking/SVG/Compute & Networking copy_Elastic Network Instance.svg.png',
-    'InternetGateWay': '/Compute & Networking/SVG/Compute & Networking copy_Amazon VPC Internet Gateway.svg.png'
-    }
 
 objects = {}
 clusternum = 0
@@ -35,7 +25,7 @@ class Dot(object):
 
     ##########################################################################
     def draw(self):
-        self.args.outputfile.write('%s [label="%s:%s"];\n' % (self.mn(self.id), self.__class__.__name__, self.id))
+        self.args.outputfile.write('%s [label="%s:%s" %s];\n' % (self.mn(self.id), self.__class__.__name__, self.id, self.image()))
 
     ##########################################################################
     def mn(self, s):
@@ -59,11 +49,12 @@ class Dot(object):
 
     ##########################################################################
     def image(self):
-        _type = self.__class__.__name__
-        image = ""
-        if _type in image_map:
-            image = ',image="%s%s"' % (image_root, image_map[_type])
-        return image
+        imgfile = os.path.join('images', '%s.png' % self.__class__.__name__)
+        if os.path.exists(imgfile):
+            imagestr = ', image="%s", shape=none ' % imgfile
+        else:
+            imagestr = ', shape=box'
+        return imagestr
 
 
 ###############################################################################
@@ -91,7 +82,7 @@ class Instance(Dot):
         self.args.outputfile.write('subgraph cluster%d {\n' % clusternum)
         if 'Name' in self.tags:
             self.args.outputfile.write('label = "%s"\n' % self.tags['Name'])
-        self.args.outputfile.write('%s [shape=box, label="%s"];\n' % (self.mn(self.id), self.id))
+        self.args.outputfile.write('%s [label="%s" %s];\n' % (self.mn(self.id), self.id, self.image()))
 
         extraconns = []
         for o in objects.values():
@@ -120,7 +111,7 @@ class Subnet(Dot):
     def draw(self):
         if self.args.vpc and self.vpc_id != self.args.vpc:
             return
-        self.args.outputfile.write('%s [shape=box, label="%s\n%s"];\n' % (self.mn(self.id), self.id, self.cidr_block))
+        self.args.outputfile.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.id), self.id, self.cidr_block, self.image()))
         self.connect(self.id, self.vpc_id)
 
 
@@ -144,7 +135,7 @@ class Volume(Dot):
 
     def draw(self):
         if not self.attachment_state:
-            self.args.outputfile.write('%s [shape=box, label="Unattached Volume:%s\n%s Gb"];\n' % (self.mn(self.id), self.id, self.size))
+            self.args.outputfile.write('%s [label="Unattached Volume:%s\n%s Gb" %s];\n' % (self.mn(self.id), self.id, self.size, self.image()))
 
     def subclusterDraw(self):
         self.args.outputfile.write('%s [shape=box, label="%s\n%s Gb"];\n' % (self.mn(self.id), self.id, self.size))
@@ -161,7 +152,7 @@ class SecurityGroup(Dot):
         self.args = args
 
     def draw(self):
-        self.args.outputfile.write('%s [shape=box, label="SG: %s"];\n' % (self.mn(self.id), self.name))
+        self.args.outputfile.write('%s [label="SG: %s" %s];\n' % (self.mn(self.id), self.name, self.image()))
 
 
 ###############################################################################
@@ -196,7 +187,7 @@ class NetworkInterface(Dot):
         pass
 
     def subclusterDraw(self):
-        self.args.outputfile.write('%s [shape=box, label="NIC: %s\n%s"];\n' % (self.mn(self.id), self.id, self.private_ip_address))
+        self.args.outputfile.write('%s [label="NIC: %s\n%s" %s];\n' % (self.mn(self.id), self.id, self.private_ip_address, self.image()))
         externallinks = []
         if options['security_groups']:
             for g in self.groups:
@@ -223,7 +214,7 @@ class InternetGateway(Dot):
                 if i != self.args.vpc:
                     self.conns.remove(i)
         if self.conns:
-            self.args.outputfile.write('%s [shape=box, label="InternetGateway: %s"];\n' % (self.mn(self.id), self.id))
+            self.args.outputfile.write('%s [label="InternetGateway: %s" %s];\n' % (self.mn(self.id), self.id, self.image))
             for i in self.conns:
                 self.connect(self.id, i)
 
@@ -243,7 +234,7 @@ class LoadBalancer(Dot):
     def draw(self):
         if self.args.vpc and self.vpc_id != self.args.vpc:
             return
-        self.args.outputfile.write('%s [shape=box, label="ELB: %s"];\n' % (self.mn(self.id), self.id))
+        self.args.outputfile.write('%s [label="ELB: %s" %s];\n' % (self.mn(self.id), self.id, self.image()))
         for i in self.instances:
             self.connect(self.id, i.id)
 
@@ -260,7 +251,7 @@ class Database(Dot):
         self.args = args
 
     def draw(self):
-        self.args.outputfile.write('%s [shape=box, label="DB: %s\n%s\n%s"];\n' % (self.mn(self.id), self.id, self.engine, self.status))
+        self.args.outputfile.write('%s [label="DB: %s\n%s\n%s" %s];\n' % (self.mn(self.id), self.id, self.engine, self.status, self.image()))
 
 
 ###############################################################################
