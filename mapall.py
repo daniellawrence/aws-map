@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+#
+# Map AWS setup
+# Images are available from http://aws.amazon.com/architecture/icons/
+
 import os
 import sys
 import argparse
@@ -6,6 +10,11 @@ import boto.vpc
 import boto.ec2
 import boto.ec2.elb
 import boto.rds
+
+# Need to create a local_settings.py file with the contents:
+#    AWS_ACCESS_KEY_ID='<YOUR_ACCESS_KEY   >'
+#    AWS_SECRET_ACCESS_KEY='<YOUR SECRET AWS ACCESS KEY            >'
+# These are available from your AWS console
 from local_settings import AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 
 objects = {}
