@@ -1,5 +1,0 @@
-argparse==1.2.1
-boto==2.10.0
-pydot==1.0.28
-pyparsing==2.0.1
-wsgiref==0.1.2
