@@ -42,6 +42,10 @@ class Dot(object):
         return False
 
     ##########################################################################
+    def inSubnet(self, subnet):
+        return True
+
+    ##########################################################################
     def connect(self, a, b, **kwargs):
         blockstr = ''
         for kk, kv in kwargs.items():
@@ -121,18 +125,23 @@ class Instance(Dot):
         self.name = instance['InstanceId']
         self.args = args
 
+    def inSubnet(self, subnet=None):
+        if subnet and self['SubnetId'] != subnet:
+            return False
+        return True
+
     def inVpc(self, vpc=None):
         if vpc and self['VpcId'] != vpc:
             return False
         return True
 
     def rank(self):
-        if self.inVpc(self.args.vpc):
+        if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             self.args.output.write("%s;" % self.mn())
 
     def draw(self):
         global clusternum
-        if not self.inVpc(self.args.vpc):
+        if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         self.args.output.write('// Instance %s\n' % self.name)
         self.args.output.write('subgraph cluster_%d {\n' % clusternum)
@@ -182,12 +191,17 @@ class Subnet(Dot):
             return False
         return True
 
+    def inSubnet(self, subnet=None):
+        if subnet and self['SubnetId'] != subnet:
+            return False
+        return True
+
     def rank(self):
-        if self.inVpc(self.args.vpc):
+        if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             self.args.output.write("%s;" % self.mn())
 
     def draw(self):
-        if not self.inVpc(self.args.vpc):
+        if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         self.args.output.write('// Subnet %s\n' % self.name)
         self.args.output.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self['CidrBlock'], self.image()))
@@ -306,12 +320,20 @@ class VPC(Dot):
             return False
         return True
 
+    def inSubnet(self, subnet):
+        """ Return True if the subnet is in this VPC"""
+        if not subnet:
+            return True
+        if objects[subnet].inVpc(self.name):
+            return True
+        return False
+
     def rank(self):
-        if self.inVpc(self.args.vpc):
+        if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             self.args.output.write("%s;" % self.mn())
 
     def draw(self):
-        if not self.inVpc(self.args.vpc):
+        if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         self.args.output.write('%s [label="%s:%s" %s];\n' % (self.mn(self.name), self.__class__.__name__, self.name, self.image()))
 
@@ -335,25 +357,34 @@ class RouteTable(Dot):
         self.name = self['RouteTableId']
 
     def rank(self):
-        if self.inVpc(self.args.vpc):
+        if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             self.args.output.write("%s;" % self.mn())
 
     def inVpc(self, vpc):
-        if vpc and self['VpcId']!=vpc:
+        if vpc and self['VpcId'] != vpc:
             return False
         return True
 
+    def inSubnet(self, subnet):
+        if not subnet:
+            return True
+        for a in self['Associations']:
+            if subnet == a.get('SubnetId', None):
+                return True
+        return False
+
     def draw(self):
-        if not self.inVpc(self.args.vpc):
+        if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
-        routelist=[]
+        routelist = []
         for rt in self['Routes']:
             if 'DestinationCidrBlock' in rt:
                 routelist.append(rt['DestinationCidrBlock'])
         self.args.output.write('%s [label="RT: %s\n%s" %s];\n' % (self.mn(), self.name, ";".join(routelist), self.image()))
         for ass in self['Associations']:
             if 'SubnetId' in ass:
-                self.connect(self.name, ass['SubnetId'])
+                if self.inSubnet(ass['SubnetId']):
+                    self.connect(self.name, ass['SubnetId'])
         for rt in self['Routes']:
             if 'InstanceId' in rt:
                 self.connect(self.name, rt['InstanceId'])
@@ -391,6 +422,11 @@ class NetworkInterface(Dot):
 
     def partOfInstance(self, instid):
         return self['Attachment'].get('InstanceId', None) == instid
+
+    def inSubnet(self, subnet=None):
+        if subnet and self['SubnetId'] != subnet:
+            return False
+        return True
 
     def draw(self):
         pass
@@ -434,6 +470,10 @@ class InternetGateway(Dot):
             for i in self.conns[:]:
                 if i != self.args.vpc:
                     self.conns.remove(i)
+        if self.args.subnet:
+            for i in self.conns[:]:
+                if not objects[i].inSubnet(self.args.subnet):
+                    self.conns.remove(i)
         if self.conns:
             self.args.output.write('%s [label="InternetGateway: %s" %s];\n' % (self.mn(self.name), self.name, self.image()))
             for i in self.conns:
@@ -467,17 +507,22 @@ class LoadBalancer(Dot):
         self.name = lb[u'LoadBalancerName']
         self.args = args
 
+    def inSubnet(self, subnet=None):
+        if subnet and subnet not in self['Subnets']:
+            return False
+        return True
+
     def inVpc(self, vpc):
         if vpc and self['VPCId'] != vpc:
             return False
         return True
 
     def rank(self):
-        if self.inVpc(self.args.vpc):
+        if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             self.args.output.write("%s;" % self.mn())
 
     def draw(self):
-        if not self.inVpc(self.args.vpc):
+        if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         ports = []
         for l in self['ListenerDescriptions']:
@@ -486,8 +531,12 @@ class LoadBalancer(Dot):
 
         self.args.output.write('%s [label="ELB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, "\n".join(ports), self.image()))
         for i in self['Instances']:
-            self.connect(self.name, i['InstanceId'])
+            if objects[i['InstanceId']].inSubnet(self.args.subnet):
+                self.connect(self.name, i['InstanceId'])
         for s in self['Subnets']:
+            if self.args.subnet:
+                if s != self.args.subnet:
+                    continue
             self.connect(self.name, s)
         if self.args.security:
             for sg in self['SecurityGroups']:
@@ -543,17 +592,25 @@ class Database(Dot):
         self.name = db['DBInstanceIdentifier']
         self.args = args
 
+    def inSubnet(self, subnet=None):
+        if not subnet:
+            return True
+        for snet in self['DBSubnetGroup']['Subnets']:
+            if subnet == snet['SubnetIdentifier']:
+                return True
+        return False
+
     def inVpc(self, vpc):
         if vpc and self['DBSubnetGroup']['VpcId'] != vpc:
             return False
         return True
 
     def rank(self):
-        if self.inVpc(self.args.vpc):
+        if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             self.args.output.write("%s;" % self.mn())
 
     def draw(self):
-        if not self.inVpc(self.args.vpc):
+        if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         self.args.output.write('// Database %s\n' % self.name)
         imgstr = self.image(["Database-%s" % self['Engine'], 'Database'])
@@ -602,6 +659,8 @@ def get_all_internet_gateways(args):
 def get_vpc_list(args):
     vpc_data = ec2cmd("describe-vpcs")['Vpcs']
     for vpc in vpc_data:
+        if args.vpc and vpc['VpcId'] != args.vpc:
+            continue
         if args.verbose:
             sys.stderr.write("VPC: %s\n" % vpc['VpcId'])
         g = VPC(vpc, args)
@@ -625,6 +684,10 @@ def get_all_subnets(args):
         sys.stderr.write("Getting subnets\n")
     subnets = ec2cmd("describe-subnets")['Subnets']
     for subnet in subnets:
+        if args.subnet and subnet['SubnetId'] != args.subnet:
+            continue
+        if args.verbose:
+            sys.stderr.write("Subnet: %s\n" % subnet['SubnetId'])
         s = Subnet(subnet, args)
         objects[s.name] = s
 
@@ -673,7 +736,6 @@ def get_all_network_interfaces(args):
 def get_all_rds(args):
     if args.verbose:
         sys.stderr.write("Getting Databases\n")
-    nics = ec2cmd('describe-network-interfaces')['NetworkInterfaces']
     dbs = rdscmd('describe-db-instances')['DBInstances']
     for db in dbs:
         rds = Database(db, args)
@@ -714,6 +776,7 @@ def map_region(args):
 def parseArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument('--vpc', default=None, help="Which VPC to examine [all]")
+    parser.add_argument('--subnet', default=None, help="Which subnet to examine [all]")
     #parser.add_argument('--region', default='ap-southeast-2', help="Which region to examine [all]")
     parser.add_argument('--output', default=sys.stdout, type=argparse.FileType('w'), help="Which file to output to (stdout)")
     parser.add_argument('--security', default=False, action='store_true', help="Draw in security groups")
@@ -721,6 +784,8 @@ def parseArgs():
     args = parser.parse_args()
     if args.vpc and not args.vpc.startswith('vpc-'):
         args.vpc = "vpc-%s" % args.vpc
+    if args.subnet and not args.subnet.startswith('subnet-'):
+        args.subnet = "subnet-%s" % args.subnet
     return args
 
 
