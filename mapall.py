@@ -102,7 +102,7 @@ class Instance(Dot):
     u'KeyName': u'KeyName',
     u'LaunchTime': u'2000-01-01T01:00:00.000Z',
     u'Monitoring': {u'State': u'disabled'},
-    u'NetworkInterfaces': [{u'Status': u'in-use', u'SourceDestCheck': True, u'VpcId': u'vpc-XXXXXXXX', u'Description': None, u'NetworkInterfaceId': u'eni-XXXXXXXX', u'PrivateIpAddresses': [{u'PrivateDnsName': u'ip-10-1-2-3.ap-southeast-2.compute.internal', u'PrivateIpAddress': u'10.1.2.3', u'Primary': True, u'Association': {u'PublicIp': u'54.1.2.3', u'PublicDnsName': u'ec2-54-1-2-3.ap-southeast-2.compute.amazonaws.com', u'IpOwnerId': u'XXXXXXXXXXXX'}}], u'PrivateDnsName': u'ip-10-1-2-3.ap-southeast-2.compute.internal', u'Attachment': {u'Status': u'attached', u'DeviceIndex': 0, u'DeleteOnTermination': True, u'AttachmentId': u'eni-attach-XXXXXXXX', u'AttachTime': u'2000-01-01T01:00:00.000Z'}, u'Groups': [{u'GroupName': u'XXX_GroupName_XXX', u'GroupId': u'sg-XXXXXXXX'}, {u'GroupName': u'XXX_GroupName_XXX', u'GroupId': u'sg-XXXXXXXX'}, {u'GroupName': u'XXX_GroupName_XXX', u'GroupId': u'sg-XXXXXXXX'}], u'SubnetId': u'subnet-XXXXXXXX', u'OwnerId': u'XXXXXXXXXXXX', u'PrivateIpAddress': u'10.1.2.3', u'Association': {u'PublicIp': u'54.1.2.3', u'PublicDnsName': u'ec2-54-1-2-3.ap-southeast-2.compute.amazonaws.com', u'IpOwnerId': u'XXXXXXXXXXXX'}}],
+    u'NetworkInterfaces': [...],
     u'Placement': {u'GroupName': None, u'Tenancy': u'default', u'AvailabilityZone': u'ap-southeast-2a'},
     u'PrivateDnsName': u'ip-10-1-2-3.ap-southeast-2.compute.internal',
     u'PrivateIpAddress': u'10.1.2.3',
@@ -236,6 +236,8 @@ class Volume(Dot):
     def draw(self):
         if self['State'] not in ('in-use',):
             if self.args.vpc:
+                return
+            if self.args.subnet or self.args.vpc:
                 return
             self.args.output.write('%s [label="Unattached Volume:%s\n%s Gb" %s];\n' % (self.mn(self.name), self.name, self['Size'], self.image()))
 
@@ -383,11 +385,12 @@ class RouteTable(Dot):
         self.args.output.write('%s [label="RT: %s\n%s" %s];\n' % (self.mn(), self.name, ";".join(routelist), self.image()))
         for ass in self['Associations']:
             if 'SubnetId' in ass:
-                if self.inSubnet(ass['SubnetId']):
+                if objects[ass['SubnetId']].inSubnet(self.args.subnet):
                     self.connect(self.name, ass['SubnetId'])
         for rt in self['Routes']:
             if 'InstanceId' in rt:
-                self.connect(self.name, rt['InstanceId'])
+                if objects[rt['InstanceId']].inSubnet(self.args.subnet):
+                    self.connect(self.name, rt['InstanceId'])
             elif 'NetworkInterfaceId' in rt:
                 self.connect(self.name, rt['NetworkInterfaceId'])
 
@@ -617,7 +620,8 @@ class Database(Dot):
         self.args.output.write('%s [label="DB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['Engine'], imgstr))
         for subnet in self['DBSubnetGroup']['Subnets']:
             if subnet['SubnetStatus'] == 'Active':
-                self.connect(self.name, subnet['SubnetIdentifier'])
+                if objects[subnet['SubnetIdentifier']].inSubnet(self.args.subnet):
+                    self.connect(self.name, subnet['SubnetIdentifier'])
         if self.args.security:
             for sg in self['VpcSecurityGroups']:
                 self.connect(self.name, sg['VpcSecurityGroupId'])
@@ -685,8 +689,8 @@ def get_all_subnets(args):
     subnets = ec2cmd("describe-subnets")['Subnets']
     for subnet in subnets:
         if args.subnet and subnet['SubnetId'] != args.subnet:
-            continue
-        if args.verbose:
+            pass
+        elif args.verbose:
             sys.stderr.write("Subnet: %s\n" % subnet['SubnetId'])
         s = Subnet(subnet, args)
         objects[s.name] = s
