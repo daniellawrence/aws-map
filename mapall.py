@@ -91,7 +91,10 @@ class Instance(Dot):
     """
     u'AmiLaunchIndex': 0
     u'Architecture': u'x86_64',
-    u'BlockDeviceMappings': [{u'DeviceName': u'/dev/sda1', u'Ebs': {u'Status': u'attached', u'DeleteOnTermination': True, u'VolumeId': u'vol-XXXXXXXX', u'AttachTime': u'2000-01-01T01:00:00.000Z'}}],
+    u'BlockDeviceMappings': [
+        {u'DeviceName': u'/dev/sda1',
+        u'Ebs': {u'Status': u'attached', u'DeleteOnTermination': True, u'VolumeId': u'vol-XXXXXXXX', u'AttachTime': u'2000-01-01T01:00:00.000Z'}
+        }],
     u'ClientToken': u'stuff',
     u'EbsOptimized': False,
     u'Hypervisor': u'xen',
@@ -116,7 +119,10 @@ class Instance(Dot):
     u'State': {u'Code': 16, u'Name': u'running'},
     u'StateTransitionReason': None,
     u'SubnetId': u'subnet-XXXXXXXX',
-    u'Tags': [{u'Key': u'aws:cloudformation:stack-id', u'Value': u'Stuff'}, {u'Key': u'aws:cloudformation:stack-name', u'Value': u'Stuff'}, {u'Key': u'Name', u'Value': u'Stuff'}, {u'Key': u'aws:cloudformation:logical-id', u'Value': u'JumpHost'}],
+    u'Tags': [{u'Key': u'aws:cloudformation:stack-id', u'Value': u'Stuff'},
+            {u'Key': u'aws:cloudformation:stack-name', u'Value': u'Stuff'},
+            {u'Key': u'Name', u'Value': u'Stuff'},
+            {u'Key': u'aws:cloudformation:logical-id', u'Value': u'JumpHost'}],
     u'VirtualizationType': u'paravirtual',
     u'VpcId': u'vpc-XXXXXXXX',
     """
@@ -178,7 +184,10 @@ class Subnet(Dot):
     u'MapPublicIpOnLaunch': False,
     u'State': u'available',
     u'SubnetId': u'subnet-XXXXXXXX',
-    u'Tags': [{u'Key': u'aws:cloudformation:stack-id', u'Value': u'arn:aws:cloudformation:ap-southeast-2:XXXXXXXXXXXX:stack/Stuff'}, {u'Key': u'aws:cloudformation:stack-name', u'Value': u'Stuff'}, {u'Key': u'aws:cloudformation:logical-id', u'Value': u'SubnetA3'}],
+    u'Tags': [{u'Key': u'aws:cloudformation:stack-id',
+             u'Value': u'arn:aws:cloudformation:ap-southeast-2:XXXXXXXXXXXX:stack/Stuff'},
+             {u'Key': u'aws:cloudformation:stack-name', u'Value': u'Stuff'},
+             {u'Key': u'aws:cloudformation:logical-id', u'Value': u'SubnetA3'}],
     u'VpcId': u'vpc-XXXXXXXX',
     """
     def __init__(self, subnet, args):
@@ -213,7 +222,10 @@ class Subnet(Dot):
 ###############################################################################
 class Volume(Dot):
     """
-    u'Attachments': [{u'AttachTime': u'2000-01-01T01:00:00.000Z', u'InstanceId': u'i-XXXXXXXX', u'VolumeId': u'vol-XXXXXXXX', u'State': u'attached', u'DeleteOnTermination': True, u'Device': u'/dev/sda1'}],
+    u'Attachments': [
+        {u'AttachTime': u'2000-01-01T01:00:00.000Z', u'InstanceId': u'i-XXXXXXXX',
+        u'VolumeId': u'vol-XXXXXXXX', u'State': u'attached',
+        u'DeleteOnTermination': True, u'Device': u'/dev/sda1'}],
     u'AvailabilityZone': u'ap-southeast-2b',
     u'CreateTime': u'2000-01-01T01:00:00.000Z',
     u'Size': 6
@@ -348,7 +360,12 @@ class RouteTable(Dot):
     u'Associations': [{u'SubnetId': u'subnet-XXXXXXXX', u'RouteTableAssociationId': u'rtbassoc-XXXXXXXX', u'RouteTableId': u'rtb-XXXXXXXX'}, ...]
     u'PropagatingVgws': [],
     u'RouteTableId': u'rtb-XXXXXXXX',
-    u'Routes': [{u'GatewayId': u'local', u'DestinationCidrBlock': u'10.1.2.3/23', u'State': u'active', u'Origin': u'CreateRouteTable'}, {u'Origin': u'CreateRoute', u'DestinationCidrBlock': u'0.0.0.0/0', u'InstanceId': u'i-XXXXXXXX', u'NetworkInterfaceId': u'eni-XXXXXXXX', u'State': u'active', u'InstanceOwnerId': u'XXXXXXXXXXXX'}]
+    u'Routes': [
+        {u'GatewayId': u'local', u'DestinationCidrBlock': u'10.1.2.3/23',
+            u'State': u'active', u'Origin': u'CreateRouteTable'},
+        {u'Origin': u'CreateRoute', u'DestinationCidrBlock': u'0.0.0.0/0',
+            u'InstanceId': u'i-XXXXXXXX', u'NetworkInterfaceId': u'eni-XXXXXXXX',
+            u'State': u'active', u'InstanceOwnerId': u'XXXXXXXXXXXX'}]
     u'Tags': [{u'Key': u'Key', u'Value': u'Value'}, ...
     u'VpcId': u'vpc-XXXXXXXX',
 
@@ -401,7 +418,11 @@ class RouteTable(Dot):
 class NetworkInterface(Dot):
     """
     u'Association': {u'PublicIp': u'54.1.2.3', u'IpOwnerId': u'amazon'}
-    u'Attachment': {u'Status': u'attached', u'DeviceIndex': 0, u'AttachTime': u'2000-01-01T01:00:00.000Z', u'InstanceId': u'i-XXXXXXXX', u'DeleteOnTermination': True, u'AttachmentId': u'eni-attach-XXXXXXXX', u'InstanceOwnerId': u'XXXXXXXXXXXX'},
+    u'Attachment': {
+        u'Status': u'attached', u'DeviceIndex': 0,
+        u'AttachTime': u'2000-01-01T01:00:00.000Z', u'InstanceId': u'i-XXXXXXXX',
+        u'DeleteOnTermination': True, u'AttachmentId': u'eni-attach-XXXXXXXX',
+        u'InstanceOwnerId': u'XXXXXXXXXXXX'},
     u'AvailabilityZone': u'ap-southeast-2b',
     u'Description': None,
     u'Groups': [{u'GroupName': u'XXX_GroupName_XXX', u'GroupId': u'sg-XXXXXXXX'}],
@@ -410,7 +431,10 @@ class NetworkInterface(Dot):
     u'OwnerId': u'XXXXXXXXXXXX',
     u'PrivateDnsName': u'ip-172-1-2-3.ap-southeast-2.compute.internal',
     u'PrivateIpAddress': u'172.1.2.3',
-    u'PrivateIpAddresses': [{u'PrivateDnsName': u'ip-172-1-2-3.ap-southeast-2.compute.internal', u'PrivateIpAddress': u'172.1.2.3', u'Primary': True, u'Association': {u'PublicIp': u'54.1.2.3', u'IpOwnerId': u'amazon'}}],
+    u'PrivateIpAddresses': [
+        {u'PrivateDnsName': u'ip-172-1-2-3.ap-southeast-2.compute.internal',
+        u'PrivateIpAddress': u'172.1.2.3', u'Primary': True,
+        u'Association': {u'PublicIp': u'54.1.2.3', u'IpOwnerId': u'amazon'}}],
     u'RequesterManaged': False,
     u'SourceDestCheck': True,
     u'Status': u'in-use',
@@ -450,7 +474,10 @@ class InternetGateway(Dot):
     """
     u'Attachments': [{u'State': u'available', u'VpcId': u'vpc-XXXXXXXX'}],
     u'InternetGatewayId': u'igw-3a121a58',
-    u'Tags': [{u'Key': u'aws:cloudformation:stack-id', u'Value': u'arn:aws:cloudformation:ap-southeast-2:XXXXXXXXXXXX:stack/Stuff'}, {u'Key': u'aws:cloudformation:logical-id', u'Value': u'InternetGateway'}, {u'Key': u'aws:cloudformation:stack-name', u'Value': u'Stuff'}],
+    u'Tags': [
+        {u'Key': u'aws:cloudformation:stack-id', u'Value': u'arn:aws:cloudformation:ap-southeast-2:XXXXXXXXXXXX:stack/Stuff'},
+        {u'Key': u'aws:cloudformation:logical-id', u'Value': u'InternetGateway'},
+        {u'Key': u'aws:cloudformation:stack-name', u'Value': u'Stuff'}],
     """
     def __init__(self, igw, args):
         self.data = igw
@@ -496,7 +523,14 @@ class LoadBalancer(Dot):
     u'DNSName': u'Stuff',
     u'HealthCheck': {u'HealthyThreshold': 2, u'Interval': 30, u'Target': u'TCP:7990', u'Timeout': 5, u'UnhealthyThreshold': 2},
     u'Instances': [{u'InstanceId': u'i-XXXXXXXX'}],
-    u'ListenerDescriptions': [{u'Listener': {u'InstancePort': 7990, u'Protocol': u'HTTPS', u'LoadBalancerPort': 443, u'SSLCertificateId': u'arn:aws:iam::XXXXXXXXXXXX:server-certificate/GenericSSL', u'InstanceProtocol': u'HTTP'}, u'PolicyNames': [u'ELBSecurityPolicy-2011-08']}, {u'Listener': {u'InstancePort': 7999, u'LoadBalancerPort': 7999, u'Protocol': u'TCP', u'InstanceProtocol': u'TCP'}, u'PolicyNames': []}],
+    u'ListenerDescriptions': [
+        {u'Listener': {
+            u'InstancePort': 7990, u'Protocol': u'HTTPS', u'LoadBalancerPort': 443,
+            u'SSLCertificateId': u'arn:aws:iam::XXXXXXXXXXXX:server-certificate/GenericSSL',
+            u'InstanceProtocol': u'HTTP'}, u'PolicyNames': [u'ELBSecurityPolicy-2011-08']},
+        {u'Listener': {
+            u'InstancePort': 7999, u'LoadBalancerPort': 7999, u'Protocol': u'TCP',
+            u'InstanceProtocol': u'TCP'}, u'PolicyNames': []}],
     u'LoadBalancerName': u'Stuff',
     u'Policies': {u'LBCookieStickinessPolicies': [], u'AppCookieStickinessPolicies': [], u'OtherPolicies': [u'ELBSecurityPolicy-2011-08']},
     u'Scheme': u'internet-facing',
@@ -820,7 +854,9 @@ def generate_file(fh):
             if obj.__class__ == objtype:
                 obj.rank(fh)
         fh.write('}\n')
-    fh.write("rank_Database -> rank_LoadBalancer -> rank_Subnet -> rank_Instance -> rank_VPC -> rank_InternetGateway [style=invis];\n")
+    ranks = ['Subnet', 'Database', 'LoadBalancer', 'Instance', 'VPC', 'InternetGateway']
+    strout = " -> ".join(["rank_%s" % x for x in ranks])
+    fh.write("%s [style=invis];\n" % strout)
 
     fh.write("}\n")
 
