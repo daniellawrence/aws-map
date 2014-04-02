@@ -23,6 +23,15 @@ Options include specifying just one VPC to draw with:
 Or specifying a subnet to draw with:
 ./mapall.py --subnet subnet_123456
 
+Iterating
+---------
+You can generate a map of each vpc or subnet individually. This is very useful if you have a large and complex setup where putting it all on a single page becomes spaghetti.
+```
+$ ./mapall.py --iterate vpc
+$ ./mapall.py --iterave subnet
+```
+
+
 Cacheing
 --------
 The program will write the results of the aws query to a .cache

@@ -831,10 +831,9 @@ def parseArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument('--vpc', default=None, help="Which VPC to examine [all]")
     parser.add_argument('--subnet', default=None, help="Which subnet to examine [all]")
-    parser.add_argument('--iterate', default=None, help="Generate a file based on this value for all subnets / vpcs")
-    #parser.add_argument('--region', default='ap-southeast-2', help="Which region to examine [all]")
+    parser.add_argument('--iterate', default=None, choices=['vpc', 'subnet'], help="Create different maps for each vpc or subnet")
     parser.add_argument('--nocache', default=False, action='store_true', help="Don't read from cache'd data")
-    parser.add_argument('--output', default=sys.stdout, type=argparse.FileType('w'), help="Which file to output to (stdout)")
+    parser.add_argument('--output', default=sys.stdout, type=argparse.FileType('w'), help="Which file to output to [stdout]")
     parser.add_argument('--security', default=False, action='store_true', help="Draw in security groups")
     parser.add_argument('-v', '--verbose', default=False, action='store_true', help="Print some details")
     args = parser.parse_args()
@@ -843,13 +842,6 @@ def parseArgs():
         args.vpc = "vpc-%s" % args.vpc
     if args.subnet and not args.subnet.startswith('subnet-'):
         args.subnet = "subnet-%s" % args.subnet
-    if args.iterate:
-        if args.vpc:
-            args.iterator = 'subnet'
-        elif args.subnet:
-            args.iterator = 'vpc'
-        else:
-            args.iterator = 'subnet'
     return args
 
 
@@ -885,9 +877,9 @@ def main():
     map_region(args)
     if args.iterate:
         for o in objects.keys():
-            if o.startswith(args.iterator):
-                f = open('%s_%s.dot' % (args.iterate, o), 'w')
-                setattr(args, args.iterator, o)
+            if o.startswith(args.iterate):
+                f = open('%s.dot' % o, 'w')
+                setattr(args, args.iterate, o)
                 generate_file(f)
                 f.close()
     else:
