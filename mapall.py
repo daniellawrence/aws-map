@@ -11,7 +11,7 @@ import sys
 
 objects = {}
 clusternum = 0
-usecache = False
+nocache = False
 
 
 ###############################################################################
@@ -686,12 +686,9 @@ def awscmd(cmd, area='ec2'):
     fullcmd = 'aws %s %s' % (area, cmd)
     cachefile = os.path.join(cachepath, md5.md5(fullcmd).hexdigest())
 
-    if usecache:
-        if os.path.exists(cachefile):
-            with open(cachefile) as f:
-                data = f.read()
-        else:
-            sys.stderr.write("No cached answer for %s\n" % fullcmd)
+    if not nocache and os.path.exists(cachefile):
+        with open(cachefile) as f:
+            data = f.read()
     else:
         with os.popen("aws %s %s" % (area, cmd)) as f:
             data = f.read()
@@ -830,18 +827,18 @@ def map_region(args):
 
 ###############################################################################
 def parseArgs():
-    global usecache
+    global nocache
     parser = argparse.ArgumentParser()
     parser.add_argument('--vpc', default=None, help="Which VPC to examine [all]")
     parser.add_argument('--subnet', default=None, help="Which subnet to examine [all]")
     parser.add_argument('--iterate', default=None, help="Generate a file based on this value for all subnets / vpcs")
     #parser.add_argument('--region', default='ap-southeast-2', help="Which region to examine [all]")
-    parser.add_argument('--cache', default=False, action='store_true', help="Use cached aws data - Train mode")
+    parser.add_argument('--nocache', default=False, action='store_true', help="Don't read from cache'd data")
     parser.add_argument('--output', default=sys.stdout, type=argparse.FileType('w'), help="Which file to output to (stdout)")
     parser.add_argument('--security', default=False, action='store_true', help="Draw in security groups")
     parser.add_argument('-v', '--verbose', default=False, action='store_true', help="Print some details")
     args = parser.parse_args()
-    usecache = args.cache
+    nocache = args.nocache
     if args.vpc and not args.vpc.startswith('vpc-'):
         args.vpc = "vpc-%s" % args.vpc
     if args.subnet and not args.subnet.startswith('subnet-'):
