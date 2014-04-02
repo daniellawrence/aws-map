@@ -3,13 +3,15 @@
 # Map AWS setup
 # Images are available from http://aws.amazon.com/architecture/icons/
 
-import os
-import sys
 import argparse
 import json
+import md5
+import os
+import sys
 
 objects = {}
 clusternum = 0
+usecache = False
 
 
 ###############################################################################
@@ -281,8 +283,8 @@ class SecurityGroup(Dot):
         if self.args.vpc and self['VpcId'] != self.args.vpc:
             return
 
-        portstr = self.permstring(self['IpPermissions'])
-        eportstr = self.permstring(self['IpPermissionsEgress'])
+        portstr = self.permstring(fh, self['IpPermissions'])
+        eportstr = self.permstring(fh, self['IpPermissionsEgress'])
 
         tportstr = []
         if portstr:
@@ -291,7 +293,7 @@ class SecurityGroup(Dot):
             tportstr.append("Egress: %s" % eportstr)
         fh.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (self.mn(self.name), self.name, self["Description"], "\n".join(tportstr), self.image()))
 
-    def permstring(self, obj):
+    def permstring(self, fh, obj):
         """
         Convert the permutations and combinations into a sensible output
         """
@@ -678,8 +680,24 @@ def ec2cmd(cmd):
 
 ###############################################################################
 def awscmd(cmd, area='ec2'):
-    with os.popen("aws %s %s" % (area, cmd)) as f:
-        data = f.read()
+    cachepath = '.cache'
+    if not os.path.exists(cachepath):
+        os.mkdir(cachepath)
+    fullcmd = 'aws %s %s' % (area, cmd)
+    cachefile = os.path.join(cachepath, md5.md5(fullcmd).hexdigest())
+
+    if usecache:
+        if os.path.exists(cachefile):
+            with open(cachefile) as f:
+                data = f.read()
+        else:
+            sys.stderr.write("No cached answer for %s\n" % fullcmd)
+    else:
+        with os.popen("aws %s %s" % (area, cmd)) as f:
+            data = f.read()
+            with open(cachefile, 'w') as g:
+                g.write(data)
+
     return json.loads(data)
 
 
@@ -812,15 +830,18 @@ def map_region(args):
 
 ###############################################################################
 def parseArgs():
+    global usecache
     parser = argparse.ArgumentParser()
     parser.add_argument('--vpc', default=None, help="Which VPC to examine [all]")
     parser.add_argument('--subnet', default=None, help="Which subnet to examine [all]")
     parser.add_argument('--iterate', default=None, help="Generate a file based on this value for all subnets / vpcs")
     #parser.add_argument('--region', default='ap-southeast-2', help="Which region to examine [all]")
+    parser.add_argument('--cache', default=False, action='store_true', help="Use cached aws data - Train mode")
     parser.add_argument('--output', default=sys.stdout, type=argparse.FileType('w'), help="Which file to output to (stdout)")
     parser.add_argument('--security', default=False, action='store_true', help="Draw in security groups")
     parser.add_argument('-v', '--verbose', default=False, action='store_true', help="Print some details")
     args = parser.parse_args()
+    usecache = args.cache
     if args.vpc and not args.vpc.startswith('vpc-'):
         args.vpc = "vpc-%s" % args.vpc
     if args.subnet and not args.subnet.startswith('subnet-'):
