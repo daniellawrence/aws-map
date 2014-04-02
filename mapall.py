@@ -158,18 +158,18 @@ class Instance(Dot):
         extraconns = []
         for o in objects.values():
             if o.partOfInstance(self.name):
-                self.connect(self.name, o.name)
+                self.connect(fh, self.name, o.name)
                 extraconns = o.subclusterDraw(fh)
         fh.write('graph [style=dotted]\n')
         fh.write('}\n')   # End subgraph cluster
         if self['SubnetId']:
-            self.connect(self.name, self['SubnetId'])
+            self.connect(fh, self.name, self['SubnetId'])
         for ic, ec in extraconns:
-            self.connect(ic, ec)
+            self.connect(fh, ic, ec)
         clusternum += 1
         if self.args.security:
             for sg in self['SecurityGroups']:
-                self.connect(self.name, sg['GroupId'])
+                self.connect(fh, self.name, sg['GroupId'])
 
 
 ###############################################################################
@@ -214,7 +214,7 @@ class Subnet(Dot):
             return
         fh.write('// Subnet %s\n' % self.name)
         fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self['CidrBlock'], self.image()))
-        self.connect(self.name, self['VpcId'])
+        self.connect(fh, self.name, self['VpcId'])
 
 
 ###############################################################################
@@ -301,7 +301,7 @@ class SecurityGroup(Dot):
         for ip in obj:
             if ip['UserIdGroupPairs']:
                 for pair in ip['UserIdGroupPairs']:
-                    self.connect(self.name, pair['GroupId'])
+                    self.connect(fh, self.name, pair['GroupId'])
             if 'FromPort' in ip and ip['FromPort']:
                 ipranges = []
                 for ipr in ip['IpRanges']:
@@ -403,13 +403,13 @@ class RouteTable(Dot):
         for ass in self['Associations']:
             if 'SubnetId' in ass:
                 if objects[ass['SubnetId']].inSubnet(self.args.subnet):
-                    self.connect(self.name, ass['SubnetId'])
+                    self.connect(fh, self.name, ass['SubnetId'])
         for rt in self['Routes']:
             if 'InstanceId' in rt:
                 if objects[rt['InstanceId']].inSubnet(self.args.subnet):
-                    self.connect(self.name, rt['InstanceId'])
+                    self.connect(fh, self.name, rt['InstanceId'])
             elif 'NetworkInterfaceId' in rt:
-                self.connect(self.name, rt['NetworkInterfaceId'])
+                self.connect(fh, self.name, rt['NetworkInterfaceId'])
 
 
 ###############################################################################
@@ -507,7 +507,7 @@ class InternetGateway(Dot):
         if self.conns:
             fh.write('%s [label="InternetGateway: %s" %s];\n' % (self.mn(self.name), self.name, self.image()))
             for i in self.conns:
-                self.connect(self.name, i)
+                self.connect(fh, self.name, i)
 
 
 ###############################################################################
@@ -569,15 +569,15 @@ class LoadBalancer(Dot):
         fh.write('%s [label="ELB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, "\n".join(ports), self.image()))
         for i in self['Instances']:
             if objects[i['InstanceId']].inSubnet(self.args.subnet):
-                self.connect(self.name, i['InstanceId'])
+                self.connect(fh, self.name, i['InstanceId'])
         for s in self['Subnets']:
             if self.args.subnet:
                 if s != self.args.subnet:
                     continue
-            self.connect(self.name, s)
+            self.connect(fh, self.name, s)
         if self.args.security:
             for sg in self['SecurityGroups']:
-                self.connect(self.name, sg)
+                self.connect(fh, self.name, sg)
 
 
 ###############################################################################
@@ -655,10 +655,10 @@ class Database(Dot):
         for subnet in self['DBSubnetGroup']['Subnets']:
             if subnet['SubnetStatus'] == 'Active':
                 if objects[subnet['SubnetIdentifier']].inSubnet(self.args.subnet):
-                    self.connect(self.name, subnet['SubnetIdentifier'])
+                    self.connect(fh, self.name, subnet['SubnetIdentifier'])
         if self.args.security:
             for sg in self['VpcSecurityGroups']:
-                self.connect(self.name, sg['VpcSecurityGroupId'])
+                self.connect(fh, self.name, sg['VpcSecurityGroupId'])
 
 
 ###############################################################################
@@ -846,7 +846,7 @@ def generate_file(fh):
         obj.draw(fh)
 
     # Assign Ranks
-    for objtype in [Database, LoadBalancer, Subnet, Instance, VPC, InternetGateway]:
+    for objtype in [Database, LoadBalancer, Subnet, Instance, VPC, InternetGateway, RouteTable]:
         fh.write('// Rank %s\n' % objtype.__name__)
         fh.write('rank_%s [style=invisible]\n' % objtype.__name__)
         fh.write('{ rank=same; rank_%s; ' % objtype.__name__)
@@ -854,7 +854,7 @@ def generate_file(fh):
             if obj.__class__ == objtype:
                 obj.rank(fh)
         fh.write('}\n')
-    ranks = ['Subnet', 'Database', 'LoadBalancer', 'Instance', 'VPC', 'InternetGateway']
+    ranks = ['RouteTable', 'Subnet', 'Database', 'LoadBalancer', 'Instance', 'VPC', 'InternetGateway']
     strout = " -> ".join(["rank_%s" % x for x in ranks])
     fh.write("%s [style=invis];\n" % strout)
 
