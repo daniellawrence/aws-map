@@ -25,8 +25,8 @@ class Dot(object):
         return self.data.get(key, None)
 
     ##########################################################################
-    def draw(self):
-        self.args.output.write('%s [label="%s:%s" %s];\n' % (self.mn(self.name), self.__class__.__name__, self.name, self.image()))
+    def draw(self, fh):
+        fh.write('%s [label="%s:%s" %s];\n' % (self.mn(self.name), self.__class__.__name__, self.name, self.image()))
 
     ##########################################################################
     def mn(self, s=None):
@@ -46,13 +46,13 @@ class Dot(object):
         return True
 
     ##########################################################################
-    def connect(self, a, b, **kwargs):
+    def connect(self, fh, a, b, **kwargs):
         blockstr = ''
         for kk, kv in kwargs.items():
             blockstr += '%s=%s ' % (kk, kv)
         if blockstr:
             blockstr = '[ %s ]' % blockstr
-        self.args.output.write("%s -> %s %s;\n" % (self.mn(a), self.mn(b), blockstr))
+        fh.write("%s -> %s %s;\n" % (self.mn(a), self.mn(b), blockstr))
 
     ##########################################################################
     def tags(self, key=None):
@@ -67,8 +67,8 @@ class Dot(object):
             return tagd
 
     ##########################################################################
-    def rank(self):
-        self.args.output.write(self.mn())
+    def rank(self, fh):
+        fh.write(self.mn())
 
     ##########################################################################
     def image(self, names=[]):
@@ -135,27 +135,27 @@ class Instance(Dot):
             return False
         return True
 
-    def rank(self):
+    def rank(self, fh):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
-            self.args.output.write("%s;" % self.mn())
+            fh.write("%s;" % self.mn())
 
-    def draw(self):
+    def draw(self, fh):
         global clusternum
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
-        self.args.output.write('// Instance %s\n' % self.name)
-        self.args.output.write('subgraph cluster_%d {\n' % clusternum)
+        fh.write('// Instance %s\n' % self.name)
+        fh.write('subgraph cluster_%d {\n' % clusternum)
         if self.tags('Name'):
-            self.args.output.write('label = "%s"\n' % self.tags('Name'))
-        self.args.output.write('%s [label="%s" %s];\n' % (self.mn(self.name), self.name, self.image()))
+            fh.write('label = "%s"\n' % self.tags('Name'))
+        fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), self.name, self.image()))
 
         extraconns = []
         for o in objects.values():
             if o.partOfInstance(self.name):
                 self.connect(self.name, o.name)
-                extraconns = o.subclusterDraw()
-        self.args.output.write('graph [style=dotted]\n')
-        self.args.output.write('}\n')   # End subgraph cluster
+                extraconns = o.subclusterDraw(fh)
+        fh.write('graph [style=dotted]\n')
+        fh.write('}\n')   # End subgraph cluster
         if self['SubnetId']:
             self.connect(self.name, self['SubnetId'])
         for ic, ec in extraconns:
@@ -196,15 +196,15 @@ class Subnet(Dot):
             return False
         return True
 
-    def rank(self):
+    def rank(self, fh):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
-            self.args.output.write("%s;" % self.mn())
+            fh.write("%s;" % self.mn())
 
-    def draw(self):
+    def draw(self, fh):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
-        self.args.output.write('// Subnet %s\n' % self.name)
-        self.args.output.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self['CidrBlock'], self.image()))
+        fh.write('// Subnet %s\n' % self.name)
+        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self['CidrBlock'], self.image()))
         self.connect(self.name, self['VpcId'])
 
 
@@ -233,16 +233,16 @@ class Volume(Dot):
                 return True
         return False
 
-    def draw(self):
+    def draw(self, fh):
         if self['State'] not in ('in-use',):
             if self.args.vpc:
                 return
             if self.args.subnet or self.args.vpc:
                 return
-            self.args.output.write('%s [label="Unattached Volume:%s\n%s Gb" %s];\n' % (self.mn(self.name), self.name, self['Size'], self.image()))
+            fh.write('%s [label="Unattached Volume:%s\n%s Gb" %s];\n' % (self.mn(self.name), self.name, self['Size'], self.image()))
 
-    def subclusterDraw(self):
-        self.args.output.write('%s [shape=box, label="%s\n%s Gb"];\n' % (self.mn(self.name), self.name, self['Size']))
+    def subclusterDraw(self, fh):
+        fh.write('%s [shape=box, label="%s\n%s Gb"];\n' % (self.mn(self.name), self.name, self['Size']))
         return []
 
 
@@ -265,7 +265,7 @@ class SecurityGroup(Dot):
         self.name = sg['GroupId']
         self.args = args
 
-    def draw(self):
+    def draw(self, fh):
         if self.args.vpc and self['VpcId'] != self.args.vpc:
             return
 
@@ -277,7 +277,7 @@ class SecurityGroup(Dot):
             tportstr.append("Ingress: %s" % portstr)
         if eportstr:
             tportstr.append("Egress: %s" % eportstr)
-        self.args.output.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (self.mn(self.name), self.name, self["Description"], "\n".join(tportstr), self.image()))
+        fh.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (self.mn(self.name), self.name, self["Description"], "\n".join(tportstr), self.image()))
 
     def permstring(self, obj):
         """
@@ -330,14 +330,14 @@ class VPC(Dot):
             return True
         return False
 
-    def rank(self):
+    def rank(self, fh):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
-            self.args.output.write("%s;" % self.mn())
+            fh.write("%s;" % self.mn())
 
-    def draw(self):
+    def draw(self, fh):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
-        self.args.output.write('%s [label="%s:%s" %s];\n' % (self.mn(self.name), self.__class__.__name__, self.name, self.image()))
+        fh.write('%s [label="%s:%s" %s];\n' % (self.mn(self.name), self.__class__.__name__, self.name, self.image()))
 
 
 ###############################################################################
@@ -358,9 +358,9 @@ class RouteTable(Dot):
         self.args = args
         self.name = self['RouteTableId']
 
-    def rank(self):
+    def rank(self, fh):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
-            self.args.output.write("%s;" % self.mn())
+            fh.write("%s;" % self.mn())
 
     def inVpc(self, vpc):
         if vpc and self['VpcId'] != vpc:
@@ -375,14 +375,14 @@ class RouteTable(Dot):
                 return True
         return False
 
-    def draw(self):
+    def draw(self, fh):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         routelist = []
         for rt in self['Routes']:
             if 'DestinationCidrBlock' in rt:
                 routelist.append(rt['DestinationCidrBlock'])
-        self.args.output.write('%s [label="RT: %s\n%s" %s];\n' % (self.mn(), self.name, ";".join(routelist), self.image()))
+        fh.write('%s [label="RT: %s\n%s" %s];\n' % (self.mn(), self.name, ";".join(routelist), self.image()))
         for ass in self['Associations']:
             if 'SubnetId' in ass:
                 if objects[ass['SubnetId']].inSubnet(self.args.subnet):
@@ -431,11 +431,11 @@ class NetworkInterface(Dot):
             return False
         return True
 
-    def draw(self):
+    def draw(self, fh):
         pass
 
-    def subclusterDraw(self):
-        self.args.output.write('%s [label="NIC: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['PrivateIpAddress'], self.image()))
+    def subclusterDraw(self, fh):
+        fh.write('%s [label="NIC: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['PrivateIpAddress'], self.image()))
         externallinks = []
         if self.args.security:
             for g in self['Groups']:
@@ -460,15 +460,15 @@ class InternetGateway(Dot):
             self.conns.append(i['VpcId'])
         self.args = args
 
-    def rank(self):
+    def rank(self, fh):
         if self.args.vpc:
             for i in self.conns[:]:
                 if i != self.args.vpc:
                     self.conns.remove(i)
         if self.conns:
-            self.args.output.write("%s;" % self.mn())
+            fh.write("%s;" % self.mn())
 
-    def draw(self):
+    def draw(self, fh):
         if self.args.vpc:
             for i in self.conns[:]:
                 if i != self.args.vpc:
@@ -478,7 +478,7 @@ class InternetGateway(Dot):
                 if not objects[i].inSubnet(self.args.subnet):
                     self.conns.remove(i)
         if self.conns:
-            self.args.output.write('%s [label="InternetGateway: %s" %s];\n' % (self.mn(self.name), self.name, self.image()))
+            fh.write('%s [label="InternetGateway: %s" %s];\n' % (self.mn(self.name), self.name, self.image()))
             for i in self.conns:
                 self.connect(self.name, i)
 
@@ -520,11 +520,11 @@ class LoadBalancer(Dot):
             return False
         return True
 
-    def rank(self):
+    def rank(self, fh):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
-            self.args.output.write("%s;" % self.mn())
+            fh.write("%s;" % self.mn())
 
-    def draw(self):
+    def draw(self, fh):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         ports = []
@@ -532,7 +532,7 @@ class LoadBalancer(Dot):
             x = l['Listener']
             ports.append("%s/%s -> %s/%s" % (x['LoadBalancerPort'], x['Protocol'], x['InstancePort'], x['InstanceProtocol']))
 
-        self.args.output.write('%s [label="ELB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, "\n".join(ports), self.image()))
+        fh.write('%s [label="ELB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, "\n".join(ports), self.image()))
         for i in self['Instances']:
             if objects[i['InstanceId']].inSubnet(self.args.subnet):
                 self.connect(self.name, i['InstanceId'])
@@ -608,16 +608,16 @@ class Database(Dot):
             return False
         return True
 
-    def rank(self):
+    def rank(self, fh):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
-            self.args.output.write("%s;" % self.mn())
+            fh.write("%s;" % self.mn())
 
-    def draw(self):
+    def draw(self, fh):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
-        self.args.output.write('// Database %s\n' % self.name)
+        fh.write('// Database %s\n' % self.name)
         imgstr = self.image(["Database-%s" % self['Engine'], 'Database'])
-        self.args.output.write('%s [label="DB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['Engine'], imgstr))
+        fh.write('%s [label="DB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['Engine'], imgstr))
         for subnet in self['DBSubnetGroup']['Subnets']:
             if subnet['SubnetStatus'] == 'Active':
                 if objects[subnet['SubnetIdentifier']].inSubnet(self.args.subnet):
@@ -781,6 +781,7 @@ def parseArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument('--vpc', default=None, help="Which VPC to examine [all]")
     parser.add_argument('--subnet', default=None, help="Which subnet to examine [all]")
+    parser.add_argument('--iterate', default=None, help="Generate a file based on this value for all subnets / vpcs")
     #parser.add_argument('--region', default='ap-southeast-2', help="Which region to examine [all]")
     parser.add_argument('--output', default=sys.stdout, type=argparse.FileType('w'), help="Which file to output to (stdout)")
     parser.add_argument('--security', default=False, action='store_true', help="Draw in security groups")
@@ -790,34 +791,53 @@ def parseArgs():
         args.vpc = "vpc-%s" % args.vpc
     if args.subnet and not args.subnet.startswith('subnet-'):
         args.subnet = "subnet-%s" % args.subnet
+    if args.iterate:
+        if args.vpc:
+            args.iterator = 'subnet'
+        elif args.subnet:
+            args.iterator = 'vpc'
+        else:
+            args.iterator = 'subnet'
     return args
+
+
+###############################################################################
+def generate_file(fh):
+    fh.write("digraph G {\n")
+    fh.write('overlap=false\n')
+    fh.write('ranksep=1.6\n')
+
+    # Draw all the objects
+    for obj in sorted(objects.values()):
+        obj.draw(fh)
+
+    # Assign Ranks
+    for objtype in [Database, LoadBalancer, Subnet, Instance, VPC, InternetGateway]:
+        fh.write('// Rank %s\n' % objtype.__name__)
+        fh.write('rank_%s [style=invisible]\n' % objtype.__name__)
+        fh.write('{ rank=same; rank_%s; ' % objtype.__name__)
+        for obj in sorted(objects.values()):
+            if obj.__class__ == objtype:
+                obj.rank(fh)
+        fh.write('}\n')
+    fh.write("rank_Database -> rank_LoadBalancer -> rank_Subnet -> rank_Instance -> rank_VPC -> rank_InternetGateway [style=invis];\n")
+
+    fh.write("}\n")
 
 
 ###############################################################################
 def main():
     args = parseArgs()
     map_region(args)
-    args.output.write("digraph G {\n")
-    args.output.write('overlap=false\n')
-    args.output.write('ranksep=1.6\n')
-
-    # Draw all the objects
-    for obj in sorted(objects.values()):
-        obj.draw()
-
-    # Assign Ranks
-    for objtype in [Database, LoadBalancer, Subnet, Instance, VPC, InternetGateway]:
-        args.output.write('// Rank %s\n' % objtype.__name__)
-        args.output.write('rank_%s [style=invisible]\n' % objtype.__name__)
-        args.output.write('{ rank=same; rank_%s; ' % objtype.__name__)
-        for obj in sorted(objects.values()):
-            if obj.__class__ == objtype:
-                obj.rank()
-        args.output.write('}\n')
-    args.output.write("rank_Database -> rank_LoadBalancer -> rank_Subnet -> rank_Instance -> rank_VPC -> rank_InternetGateway [style=invis];\n")
-
-    args.output.write("}\n")
-
+    if args.iterate:
+        for o in objects.keys():
+            if o.startswith(args.iterator):
+                f = open('%s_%s.dot' % (args.iterate, o), 'w')
+                setattr(args, args.iterator, o)
+                generate_file(f)
+                f.close()
+    else:
+        generate_file(args.output)
 
 ###############################################################################
 if __name__ == '__main__':
