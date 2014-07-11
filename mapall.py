@@ -14,6 +14,7 @@ objects = {}
 clusternum = 0
 awsflags = []
 nocache = False
+toDraw = set()
 
 
 ###############################################################################
@@ -151,10 +152,11 @@ class NetworkAcl(Dot):
         fh.write("// NACL %s\n" % self.name)
         fh.write('%s [shape="box", label="%s"];\n' % (self.mn(), self.name))
         self.genRuleBlock('ingress', fh)
+        fh.write("%s -> %s_ingress_rules\n" % (self.mn(), self.mn()))
         self.genRuleBlock('egress', fh)
+        fh.write("%s_egress_rules -> %s\n" % (self.mn(), self.mn()))
 
     def genRuleBlock(self, direct, fh):
-        fh.write("%s -> %s_%s_rules\n" % (self.mn(), self.mn(), direct))
         fh.write("// NACL %s\n" % self.name)
         fh.write('%s_%s_rules [ shape="Mrecord" label=<<table border="1">' % (self.mn(), direct))
         fh.write('<tr><td bgcolor="black" colspan="3"><font color="white">%s %s</font></td></tr>\n' % (self.name, direct))
@@ -252,7 +254,7 @@ class Instance(Dot):
 
     def drawSec(self, fh):
         fh.write('// Instance %s\n' % self.name)
-        fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), self.name, self.image()))
+        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self['PrivateIpAddress'], self.image()))
         for sg in self['SecurityGroups']:
             self.connect(fh, self.name, sg['GroupId'])
         if self['SubnetId']:
@@ -403,6 +405,7 @@ class SecurityGroup(Dot):
         self.data = sg
         self.name = sg['GroupId']
         self.args = args
+        self.drawn = False
 
     def draw(self, fh):
         if self.args.vpc and self['VpcId'] != self.args.vpc:
@@ -416,6 +419,7 @@ class SecurityGroup(Dot):
             tportstr.append("Ingress: %s" % portstr)
         if eportstr:
             tportstr.append("Egress: %s" % eportstr)
+        desc = "\\n".join(chunkstring(self['Description'], 20))
         fh.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (self.mn(self.name), self.name, desc, "\n".join(tportstr), self.image()))
 
     def drawSec(self, fh):
@@ -426,6 +430,7 @@ class SecurityGroup(Dot):
         self.genRuleBlock(self['IpPermissionsEgress'], 'egress', fh)
         fh.write("%s_ingress_rules -> %s;\n" % (self.mn(), self.mn()))
         fh.write("%s -> %s_egress_rules;\n" % (self.mn(), self.mn()))
+        self.drawn = True
 
     def genRuleBlock(self, struct, direct, fh):
         fh.write("// SG %s %s\n" % (self.name, direct))
@@ -441,8 +446,16 @@ class SecurityGroup(Dot):
             for ipr in e['IpRanges']:
                 if 'CidrIp' in ipr:
                     ipranges.append(ipr['CidrIp'])
-            iprangestr = ';'.join(ipranges)
-            if not ipranges:
+
+            if ipranges:
+                if len(ipranges) > 1:
+                    iprangestr = "<table>"
+                    for ipr in ipranges:
+                        iprangestr += "<tr><td>%s</td></tr>" % ipr
+                    iprangestr += "</table>"
+                else:
+                    iprangestr = "%s" % ipranges[0]
+            else:
                 iprangestr = "See %s" % e['UserIdGroupPairs'][0]['GroupId']
             fh.write("<td>%s</td>" % iprangestr)
             if 'FromPort' in e and e['FromPort']:
@@ -456,7 +469,8 @@ class SecurityGroup(Dot):
         for e in struct:
             if e['UserIdGroupPairs']:
                 for pair in e['UserIdGroupPairs']:
-                    fh.write("%s_%s_rules -> %s;\n" % (self.mn(), direct, self.mn(pair['GroupId'])))
+                    toDraw.add(pair['GroupId'])
+                    fh.write('%s_%s_rules -> %s [label="SG Referrer"];\n' % (self.mn(), direct, self.mn(pair['GroupId'])))
 
     def relevent_to_ip(self, ip):
         for i in self['IpPermissions']:
@@ -530,6 +544,9 @@ class VPC(Dot):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             fh.write("%s;" % self.mn())
 
+    def drawSec(self, fh):
+        fh.write('%s [label="%s:%s" %s];\n' % (self.mn(self.name), self.__class__.__name__, self.name, self.image()))
+
     def draw(self, fh):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
@@ -582,6 +599,13 @@ class RouteTable(Dot):
             if subnet == a.get('SubnetId', None):
                 return True
         return False
+
+    def drawSec(self, fh):
+        routelist = []
+        for rt in self['Routes']:
+            if 'DestinationCidrBlock' in rt:
+                routelist.append(rt['DestinationCidrBlock'])
+        fh.write('%s [label="RT: %s\n%s" %s];\n' % (self.mn(), self.name, "\\n".join(routelist), self.image()))
 
     def draw(self, fh):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
@@ -856,8 +880,24 @@ class Database(Dot):
 
 
 ###############################################################################
-def chunkstring(string, length):
-    return (string[0+i:length+i] for i in range(0, len(string), length))
+def chunkstring(strng, length):
+    """ Break a string on word boundaries, where each line is up to
+    length characters long """
+    ans = []
+    line = []
+    for w in strng.split():
+        if len(w) >= length:
+            ans.append(" ".join(line))
+            ans.append(w)
+            line = []
+            continue
+        if len(" ".join(line)) + len(w) < length:
+            line.append(w)
+        else:
+            ans.append(" ".join(line))
+            line = []
+    ans.append(" ".join(line))
+    return ans
 
 
 ###############################################################################
@@ -1097,6 +1137,7 @@ def generate_secmap(ec2, fh):
     """ Generate a security map instead """
     generateHeader(fh)
     subnet = objects[ec2]['SubnetId']
+    vpc = objects[ec2]['VpcId']
 
     # The ec2
     objects[ec2].drawSec(fh)
@@ -1109,13 +1150,22 @@ def generate_secmap(ec2, fh):
     subnet = objects[ec2]['SubnetId']
     objects[subnet].drawSec(fh)
 
-    # NACLs associated with that subnet
+    # NACLs and RTs associated with that subnet
     for obj in objects.values():
-        if obj.__class__ in (NetworkAcl, ):
+        if obj.__class__ in (NetworkAcl, RouteTable):
             for assoc in obj['Associations']:
-                if assoc['SubnetId'] == subnet:
+                if 'SubnetId' in assoc and assoc['SubnetId'] == subnet:
                     obj.drawSec(fh)
                     fh.write("%s -> %s\n" % (obj.mn(), objects[subnet].mn()))
+
+    # VPC that the EC2 is in
+    objects[vpc].drawSec(fh)
+
+    # Finish any referred to SG
+    for sg in list(toDraw):
+        if not objects[sg].drawn:
+            objects[sg].drawSec(fh)
+
     generateFooter(fh)
 
 
