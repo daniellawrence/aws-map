@@ -8,6 +8,7 @@ import json
 import md5
 import os
 import sys
+import netaddr
 
 objects = {}
 clusternum = 0
@@ -49,6 +50,10 @@ class Dot(object):
         return True
 
     ##########################################################################
+    def drawSec(self, fh):
+        sys.stderr.write("%s.drawSec() undefined\n" % self.__class__.__name__)
+
+    ##########################################################################
     def connect(self, fh, a, b, **kwargs):
         blockstr = ''
         for kk, kv in kwargs.items():
@@ -68,6 +73,14 @@ class Dot(object):
             return tagd.get(key, None)
         else:
             return tagd
+
+    ##########################################################################
+    def inVpc(self, vpc):
+        return False
+
+    ##########################################################################
+    def relevent_to_ip(self, ip):
+        return False
 
     ##########################################################################
     def rank(self, fh):
@@ -93,7 +106,13 @@ class Dot(object):
 class NetworkAcl(Dot):
     """
     {
-        "Associations": [],
+        "Associations": [
+            {
+            "SubnetId": "subnet-XXXXXXXX",
+            "NetworkAclId": "acl-XXXXXXXX",
+            "NetworkAclAssociationId": "aclassoc-XXXXXXXX"
+            },
+        ],
         "NetworkAclId": "acl-XXXXXXXX",
         "VpcId": "vpc-XXXXXXXX",
         "Tags": [],
@@ -117,8 +136,57 @@ class NetworkAcl(Dot):
             return False
         return True
 
+    def inSubnet(self, subnet=None):
+        if subnet:
+            for assoc in self['Associations']:
+                if assoc['SubnetId'] == subnet:
+                    return True
+            return False
+        return True
+
     def draw(self, fh):
         fh.write("// NACL %s\n" % self.name)
+
+    def drawSec(self, fh):
+        fh.write("// NACL %s\n" % self.name)
+        fh.write('%s [shape="box", label="%s"];\n' % (self.mn(), self.name))
+        self.genRuleBlock('ingress', fh)
+        self.genRuleBlock('egress', fh)
+
+    def genRuleBlock(self, direct, fh):
+        fh.write("%s -> %s_%s_rules\n" % (self.mn(), self.mn(), direct))
+        fh.write("// NACL %s\n" % self.name)
+        fh.write('%s_%s_rules [ shape="Mrecord" label=<<table border="1">' % (self.mn(), direct))
+        fh.write('<tr><td bgcolor="black" colspan="3"><font color="white">%s %s</font></td></tr>\n' % (self.name, direct))
+        fh.write('<tr><td>Rule</td><td>CIDR</td><td>Ports</td></tr>\n')
+        for e in self['Entries']:
+            if direct == 'ingress' and e['Egress']:
+                continue
+            if direct == 'egress' and not e['Egress']:
+                continue
+            col = "green" if e['RuleAction'] == 'allow' else "red"
+            protocol = {'6': 'tcp', '17': 'udp'}.get(e['Protocol'], e['Protocol'])
+            if 'PortRange' in e:
+                if e['PortRange']['From'] == e['PortRange']['To']:
+                    portrange = "%s/%s" % (e['PortRange']['From'], protocol)
+                else:
+                    portrange = "%s-%s/%s" % (e['PortRange']['From'], e['PortRange']['To'], protocol)
+            else:
+                portrange = ''
+            fh.write("<tr>\n")
+            fh.write('<td bgcolor="%s">%s</td>' % (col, e['RuleNumber']))
+            fh.write("<td>%s</td>" % e['CidrBlock'])
+            fh.write("<td>%s</td>\n" % portrange)
+            fh.write("</tr>\n")
+        fh.write("</table>>\n")
+        fh.write("];\n")
+
+    def relevent_to_ip(self, ip):
+        for e in self['Entries']:
+            if netaddr.IPAddress(ip) in netaddr.IPNetwork(e['CidrBlock']):
+                print "NACL %s - ip %s is relevent to %s" % (self.name, ip, e['CidrBlock'])
+                return True
+        return False
 
 
 ###############################################################################
@@ -182,6 +250,14 @@ class Instance(Dot):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             fh.write("%s;" % self.mn())
 
+    def drawSec(self, fh):
+        fh.write('// Instance %s\n' % self.name)
+        fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), self.name, self.image()))
+        for sg in self['SecurityGroups']:
+            self.connect(fh, self.name, sg['GroupId'])
+        if self['SubnetId']:
+            self.connect(fh, self.name, self['SubnetId'])
+
     def draw(self, fh):
         global clusternum
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
@@ -237,6 +313,12 @@ class Subnet(Dot):
             return False
         return True
 
+    def relevent_to_ip(self, ip):
+        if netaddr.IPAddress(ip) in netaddr.IPNetwork(self['CidrBlock']):
+            print "Subnet %s - ip %s is relevent to %s" % (self.name, ip, self['CidrBlock'])
+            return True
+        return False
+
     def inSubnet(self, subnet=None):
         if subnet and self['SubnetId'] != subnet:
             return False
@@ -245,6 +327,11 @@ class Subnet(Dot):
     def rank(self, fh):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             fh.write("%s;" % self.mn())
+
+    def drawSec(self, fh):
+        fh.write('// Subnet %s\n' % self.name)
+        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self['CidrBlock'], self.image()))
+        self.connect(fh, self.name, self['VpcId'])
 
     def draw(self, fh):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
@@ -281,6 +368,9 @@ class Volume(Dot):
             if a['InstanceId'] == instid:
                 return True
         return False
+
+    def drawSec(self, fh):
+        return
 
     def draw(self, fh):
         if self['State'] not in ('in-use',):
@@ -326,7 +416,58 @@ class SecurityGroup(Dot):
             tportstr.append("Ingress: %s" % portstr)
         if eportstr:
             tportstr.append("Egress: %s" % eportstr)
-        fh.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (self.mn(self.name), self.name, self["Description"], "\n".join(tportstr), self.image()))
+        fh.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (self.mn(self.name), self.name, desc, "\n".join(tportstr), self.image()))
+
+    def drawSec(self, fh):
+        fh.write("// SG %s\n" % self.name)
+        desc = "\\n".join(chunkstring(self['Description'], 20))
+        fh.write('%s [shape="square", label="%s\n\n%s"]\n' % (self.mn(), self.name, desc))
+        self.genRuleBlock(self['IpPermissions'], 'ingress', fh)
+        self.genRuleBlock(self['IpPermissionsEgress'], 'egress', fh)
+        fh.write("%s_ingress_rules -> %s;\n" % (self.mn(), self.mn()))
+        fh.write("%s -> %s_egress_rules;\n" % (self.mn(), self.mn()))
+
+    def genRuleBlock(self, struct, direct, fh):
+        fh.write("// SG %s %s\n" % (self.name, direct))
+        for e in struct:
+            fh.write("// %s\n" % e)
+        fh.write('%s_%s_rules [ shape="Mrecord" label=<<table border="1">' % (self.mn(), direct))
+        fh.write('<tr><td colspan="2" bgcolor="black"><font color="white"><b>%s %s</b></font></td></tr>\n' % (self.name, direct))
+        fh.write('<tr><td>CIDR</td><td>Ports</td></tr>\n')
+
+        for e in struct:
+            fh.write("<tr>\n")
+            ipranges = []
+            for ipr in e['IpRanges']:
+                if 'CidrIp' in ipr:
+                    ipranges.append(ipr['CidrIp'])
+            iprangestr = ';'.join(ipranges)
+            if not ipranges:
+                iprangestr = "See %s" % e['UserIdGroupPairs'][0]['GroupId']
+            fh.write("<td>%s</td>" % iprangestr)
+            if 'FromPort' in e and e['FromPort']:
+                fh.write("<td>%s - %s/%s</td>" % (e['FromPort'], e['ToPort'], e['IpProtocol']))
+            else:
+                fh.write("<td>ALL</td>\n")
+            fh.write("</tr>\n")
+        fh.write("</table>>\n")
+        fh.write("];\n")
+
+        for e in struct:
+            if e['UserIdGroupPairs']:
+                for pair in e['UserIdGroupPairs']:
+                    fh.write("%s_%s_rules -> %s;\n" % (self.mn(), direct, self.mn(pair['GroupId'])))
+
+    def relevent_to_ip(self, ip):
+        for i in self['IpPermissions']:
+            for ipr in i['IpRanges']:
+                if netaddr.IPAddress(ip) in netaddr.IPNetwork(ipr['CidrIp']):
+                    return True
+        for i in self['IpPermissionsEgress']:
+            for ipr in i['IpRanges']:
+                if netaddr.IPAddress(ip) in netaddr.IPNetwork(ipr['CidrIp']):
+                    return True
+        return False
 
     def permstring(self, fh, obj):
         """
@@ -379,6 +520,12 @@ class VPC(Dot):
             return True
         return False
 
+    def relevent_to_ip(self, ip):
+        if netaddr.IPAddress(ip) in netaddr.IPNetwork(self['CidrBlock']):
+            print "VPC %s - ip %s is relevent to %s" % (self.name, ip, self['CidrBlock'])
+            return True
+        return False
+
     def rank(self, fh):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             fh.write("%s;" % self.mn())
@@ -420,6 +567,13 @@ class RouteTable(Dot):
         if vpc and self['VpcId'] != vpc:
             return False
         return True
+
+    def relevent_to_ip(self, ip):
+        for rt in self['Routes']:
+            if netaddr.IPAddress(ip) in netaddr.IPNetwork(rt['DestinationCidrBlock']):
+                print "RT %s - ip %s is relevent to %s" % (self.name, ip, rt['DestinationCidrBlock'])
+                return True
+        return False
 
     def inSubnet(self, subnet):
         if not subnet:
@@ -702,6 +856,11 @@ class Database(Dot):
 
 
 ###############################################################################
+def chunkstring(string, length):
+    return (string[0+i:length+i] for i in range(0, len(string), length))
+
+
+###############################################################################
 def elbcmd(cmd):
     return awscmd(cmd, 'elb')
 
@@ -805,6 +964,8 @@ def get_all_security_groups(args):
     for sg in sgs:
         s = SecurityGroup(sg, args)
         objects[s.name] = s
+        if args.verbose:
+            sys.stderr.write("SG %s\n" % s.name)
 
 
 ###############################################################################
@@ -935,12 +1096,26 @@ def generateFooter(fh):
 def generate_secmap(ec2, fh):
     """ Generate a security map instead """
     generateHeader(fh)
-    vpc = objects[ec2]['VpcId']
+    subnet = objects[ec2]['SubnetId']
+
+    # The ec2
+    objects[ec2].drawSec(fh)
+
+    # Security groups associated with the ec2
+    for sg in objects[ec2]['SecurityGroups']:
+        objects[sg['GroupId']].drawSec(fh)
+
+    # Subnet ec2 is on
+    subnet = objects[ec2]['SubnetId']
+    objects[subnet].drawSec(fh)
+
+    # NACLs associated with that subnet
     for obj in objects.values():
-        if obj.__class__ == NetworkAcl:
-            if obj.inVpc(vpc):
-                obj.draw(fh)
-    objects[ec2].draw(fh)
+        if obj.__class__ in (NetworkAcl, ):
+            for assoc in obj['Associations']:
+                if assoc['SubnetId'] == subnet:
+                    obj.drawSec(fh)
+                    fh.write("%s -> %s\n" % (obj.mn(), objects[subnet].mn()))
     generateFooter(fh)
 
 
