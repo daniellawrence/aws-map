@@ -11,6 +11,7 @@ import sys
 
 objects = {}
 clusternum = 0
+awsflags = []
 nocache = False
 
 
@@ -450,7 +451,10 @@ class NetworkInterface(Dot):
         self.name = self['NetworkInterfaceId']
 
     def partOfInstance(self, instid):
-        return self['Attachment'].get('InstanceId', None) == instid
+        try:
+            return self['Attachment'].get('InstanceId', None) == instid
+        except AttributeError:
+            return False
 
     def inSubnet(self, subnet=None):
         if subnet and self['SubnetId'] != subnet:
@@ -683,19 +687,23 @@ def awscmd(cmd, area='ec2'):
     cachepath = '.cache'
     if not os.path.exists(cachepath):
         os.mkdir(cachepath)
-    fullcmd = 'aws %s %s' % (area, cmd)
+    fullcmd = 'aws %s %s %s' % (" ".join(awsflags), area, cmd)
     cachefile = os.path.join(cachepath, md5.md5(fullcmd).hexdigest())
 
     if not nocache and os.path.exists(cachefile):
         with open(cachefile) as f:
             data = f.read()
     else:
-        with os.popen("aws %s %s" % (area, cmd)) as f:
+        with os.popen(fullcmd) as f:
             data = f.read()
             with open(cachefile, 'w') as g:
                 g.write(data)
 
-    return json.loads(data)
+    try:
+        return json.loads(data)
+    except ValueError:
+        sys.stderr.write("Failed to decode output from %s\n%s\n" % (fullcmd, data))
+        sys.exit(1)
 
 
 ###############################################################################
@@ -828,25 +836,42 @@ def map_region(args):
 ###############################################################################
 def parseArgs():
     global nocache
+    global awsflags
     parser = argparse.ArgumentParser()
-    parser.add_argument('--vpc', default=None, help="Which VPC to examine [all]")
-    parser.add_argument('--subnet', default=None, help="Which subnet to examine [all]")
-    parser.add_argument('--iterate', default=None, choices=['vpc', 'subnet'], help="Create different maps for each vpc or subnet")
-    parser.add_argument('--nocache', default=False, action='store_true', help="Don't read from cache'd data")
-    parser.add_argument('--output', default=sys.stdout, type=argparse.FileType('w'), help="Which file to output to [stdout]")
-    parser.add_argument('--security', default=False, action='store_true', help="Draw in security groups")
-    parser.add_argument('-v', '--verbose', default=False, action='store_true', help="Print some details")
+    parser.add_argument(
+        '--awsflag', default=None, help="Flags to pass to aws calls [None]")
+    parser.add_argument(
+        '--vpc', default=None, help="Which VPC to examine [all]")
+    parser.add_argument(
+        '--subnet', default=None, help="Which subnet to examine [all]")
+    parser.add_argument(
+        '--iterate', default=None, choices=['vpc', 'subnet'],
+        help="Create different maps for each vpc or subnet")
+    parser.add_argument(
+        '--nocache', default=False, action='store_true',
+        help="Don't read from cache'd data")
+    parser.add_argument(
+        '--output', default=sys.stdout, type=argparse.FileType('w'),
+        help="Which file to output to [stdout]")
+    parser.add_argument(
+        '--security', default=False, action='store_true',
+        help="Draw in security groups")
+    parser.add_argument(
+        '-v', '--verbose', default=False, action='store_true',
+        help="Print some details")
     args = parser.parse_args()
     nocache = args.nocache
     if args.vpc and not args.vpc.startswith('vpc-'):
         args.vpc = "vpc-%s" % args.vpc
     if args.subnet and not args.subnet.startswith('subnet-'):
         args.subnet = "subnet-%s" % args.subnet
+    if args.awsflag:
+        awsflags = ["--%s" % args.awsflag]
     return args
 
 
 ###############################################################################
-def generate_file(fh):
+def generate_map(fh):
     fh.write("digraph G {\n")
     fh.write('overlap=false\n')
     fh.write('ranksep=1.6\n')
@@ -880,10 +905,10 @@ def main():
             if o.startswith(args.iterate):
                 f = open('%s.dot' % o, 'w')
                 setattr(args, args.iterate, o)
-                generate_file(f)
+                generate_map(f)
                 f.close()
     else:
-        generate_file(args.output)
+        generate_map(args.output)
 
 ###############################################################################
 if __name__ == '__main__':
