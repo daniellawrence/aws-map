@@ -16,6 +16,8 @@ awsflags = []
 nocache = False
 secGrpToDraw = set()
 
+colours = ['azure', 'coral', 'wheat', 'deepskyblue', 'firebrick', 'gold', 'green', 'plum', 'salmon', 'sienna']
+
 
 ###############################################################################
 ###############################################################################
@@ -254,7 +256,8 @@ class Instance(Dot):
 
     def drawSec(self, fh):
         fh.write('// Instance %s\n' % self.name)
-        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self['PrivateIpAddress'], self.image()))
+        label = "%s\n%s\n%s" % (self.tags('Name'), self.name, self['PrivateIpAddress'])
+        fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), label, self.image()))
         for sg in self['SecurityGroups']:
             self.connect(fh, self.name, sg['GroupId'])
         if self['SubnetId']:
@@ -395,8 +398,14 @@ class SecurityGroup(Dot):
     u'Description': u'SG Description',
     u'GroupId': u'sg-XXXXXXXX'
     u'GroupName': u'XXX_GroupName_XXX',
-    u'IpPermissions': [{u'ToPort': 443, u'IpProtocol': u'tcp', u'IpRanges': [{u'CidrIp': u'0.0.0.0/0'}], u'UserIdGroupPairs': [], u'FromPort': 443}],
-    u'IpPermissionsEgress': [{u'ToPort': 4502, u'IpProtocol': u'tcp', u'IpRanges': [{u'CidrIp': u'0.0.0.0/0'}], u'UserIdGroupPairs': [], u'FromPort': 4502}],
+    u'IpPermissions': [
+        {u'ToPort': 443, u'IpProtocol': u'tcp',
+        u'IpRanges': [{u'CidrIp': u'0.0.0.0/0'}],
+        u'UserIdGroupPairs': [], u'FromPort': 443}],
+    u'IpPermissionsEgress': [
+        {u'ToPort': 4502, u'IpProtocol': u'tcp',
+        u'IpRanges': [{u'CidrIp': u'0.0.0.0/0'}],
+        u'UserIdGroupPairs': [], u'FromPort': 4502}],
     u'OwnerId': u'XXXXXXXXXXXX',
     u'Tags': [{u'Key': u'Key', u'Value': u'Value'}, ...
     u'VpcId': u'vpc-XXXXXXXX',
@@ -423,13 +432,27 @@ class SecurityGroup(Dot):
         fh.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (self.mn(self.name), self.name, desc, "\n".join(tportstr), self.image()))
 
     def drawSec(self, fh):
+        global clusternum
+        self.extraRules = []
         fh.write("// SG %s\n" % self.name)
+        fh.write('subgraph cluster_%d {\n' % clusternum)
+        fh.write('style=filled; color="grey90";\n')
+        fh.write('node [style=filled, color="%s"];\n' % colours[clusternum])
         desc = "\\n".join(chunkstring(self['Description'], 20))
         fh.write('%s [shape="rect", label="%s\n%s"]\n' % (self.mn(), self.name, desc))
-        self.genRuleBlock(self['IpPermissions'], 'ingress', fh)
-        self.genRuleBlock(self['IpPermissionsEgress'], 'egress', fh)
-        fh.write("%s_ingress_rules -> %s;\n" % (self.mn(), self.mn()))
-        fh.write("%s -> %s_egress_rules;\n" % (self.mn(), self.mn()))
+        if self['IpPermissions']:
+            self.genRuleBlock(self['IpPermissions'], 'ingress', fh)
+        if self['IpPermissionsEgress']:
+            self.genRuleBlock(self['IpPermissionsEgress'], 'egress', fh)
+        clusternum += 1
+        fh.write("}\n")
+
+        if self['IpPermissions']:
+            fh.write("%s_ingress_rules -> %s [weight=5];\n" % (self.mn(), self.mn()))
+        if self['IpPermissionsEgress']:
+            fh.write("%s -> %s_egress_rules [weight=5];\n" % (self.mn(), self.mn()))
+        for r in self.extraRules:
+            fh.write(r)
         self.drawn = True
 
     def genRuleBlock(self, struct, direct, fh):
@@ -470,7 +493,7 @@ class SecurityGroup(Dot):
             if e['UserIdGroupPairs']:
                 for pair in e['UserIdGroupPairs']:
                     secGrpToDraw.add(pair['GroupId'])
-                    fh.write('%s_%s_rules -> %s [label="SG Referrer"];\n' % (self.mn(), direct, self.mn(pair['GroupId'])))
+                    self.extraRules.append('%s_%s_rules -> %s;\n' % (self.mn(), direct, self.mn(pair['GroupId'])))
 
     def relevent_to_ip(self, ip):
         for i in self['IpPermissions']:
