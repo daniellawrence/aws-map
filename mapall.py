@@ -90,6 +90,40 @@ class Dot(object):
 ###############################################################################
 ###############################################################################
 ###############################################################################
+class NetworkAcl(Dot):
+    """
+    {
+        "Associations": [],
+        "NetworkAclId": "acl-XXXXXXXX",
+        "VpcId": "vpc-XXXXXXXX",
+        "Tags": [],
+        "Entries": [ {
+            "CidrBlock": "0.0.0.0/0",
+            "RuleNumber": 1,
+            "Protocol": "-1",
+            "Egress": true,
+            "RuleAction": "allow"
+            }, ],
+        "IsDefault": true
+    }
+    """
+    def __init__(self, instance, args):
+        self.data = instance
+        self.name = instance['NetworkAclId']
+        self.args = args
+
+    def inVpc(self, vpc):
+        if vpc and self['VpcId'] != vpc:
+            return False
+        return True
+
+    def draw(self, fh):
+        fh.write("// NACL %s\n" % self.name)
+
+
+###############################################################################
+###############################################################################
+###############################################################################
 class Instance(Dot):
     """
     u'AmiLaunchIndex': 0
@@ -814,6 +848,18 @@ def get_all_elbs(args):
 
 
 ###############################################################################
+def get_all_networkacls(args):
+    if args.verbose:
+        sys.stderr.write("Getting NACLs\n")
+    nacls = ec2cmd('describe-network-acls')['NetworkAcls']
+    for nacl in nacls:
+        nc = NetworkAcl(nacl, args)
+        objects[nc.name] = nc
+        if args.verbose:
+            sys.stderr.write("NACL: %s\n" % nc.name)
+
+
+###############################################################################
 def map_region(args):
     # EC2
     get_vpc_list(args)
@@ -823,8 +869,8 @@ def map_region(args):
     get_all_subnets(args)
     get_all_volumes(args)
     get_all_route_tables(args)
-    if args.security:
-        get_all_security_groups(args)
+    get_all_security_groups(args)
+    get_all_networkacls(args)
 
     # RDS
     get_all_rds(args)
@@ -857,6 +903,9 @@ def parseArgs():
         '--security', default=False, action='store_true',
         help="Draw in security groups")
     parser.add_argument(
+        '--secmap', default=None,
+        help="Draw a security map for specified ec2")
+    parser.add_argument(
         '-v', '--verbose', default=False, action='store_true',
         help="Print some details")
     args = parser.parse_args()
@@ -871,10 +920,33 @@ def parseArgs():
 
 
 ###############################################################################
-def generate_map(fh):
+def generateHeader(fh):
     fh.write("digraph G {\n")
     fh.write('overlap=false\n')
     fh.write('ranksep=1.6\n')
+
+
+###############################################################################
+def generateFooter(fh):
+    fh.write("}\n")
+
+
+###############################################################################
+def generate_secmap(ec2, fh):
+    """ Generate a security map instead """
+    generateHeader(fh)
+    vpc = objects[ec2]['VpcId']
+    for obj in objects.values():
+        if obj.__class__ == NetworkAcl:
+            if obj.inVpc(vpc):
+                obj.draw(fh)
+    objects[ec2].draw(fh)
+    generateFooter(fh)
+
+
+###############################################################################
+def generate_map(fh):
+    generateHeader(fh)
 
     # Draw all the objects
     for obj in sorted(objects.values()):
@@ -893,13 +965,16 @@ def generate_map(fh):
     strout = " -> ".join(["rank_%s" % x for x in ranks])
     fh.write("%s [style=invis];\n" % strout)
 
-    fh.write("}\n")
+    generateFooter(fh)
 
 
 ###############################################################################
 def main():
     args = parseArgs()
     map_region(args)
+    if args.secmap:
+        generate_secmap(args.secmap, args.output)
+        return
     if args.iterate:
         for o in objects.keys():
             if o.startswith(args.iterate):
