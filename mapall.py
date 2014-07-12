@@ -1208,7 +1208,6 @@ def generate_secmap(ec2, fh):
                     fh.write("%s -> %s\n" % (obj.mn(), objects[subnet].mn()))
             continue
         if obj.__class__ in (Database, ):
-            #print objects[obj]['VpcSecurityGroups']
             for sg in obj['VpcSecurityGroups']:
                 if sg['VpcSecurityGroupId'] in secGrpToDraw:
                     obj.drawSec(fh)
@@ -1225,11 +1224,14 @@ def generate_secmap(ec2, fh):
 
 
 ###############################################################################
-def generate_map(fh):
+def generate_map(fh, args):
     generateHeader(fh)
 
     # Draw all the objects
     for obj in sorted(objects.values()):
+        if obj.__class__ == SecurityGroup:
+            if not args.security:
+                continue
         obj.draw(fh)
 
     # Assign Ranks
@@ -1260,10 +1262,10 @@ def main():
             if o.startswith(args.iterate):
                 f = open('%s.dot' % o, 'w')
                 setattr(args, args.iterate, o)
-                generate_map(f)
+                generate_map(f, args)
                 f.close()
     else:
-        generate_map(args.output)
+        generate_map(args.output, args)
 
 ###############################################################################
 if __name__ == '__main__':
