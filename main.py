@@ -324,9 +324,11 @@ def get_name(obj):
 def main():
 
     parser = argparse.ArgumentParser()
-    # parser.add_argument()
+    parser.add_argument('-r', '--region')
 
-    aws_map = AWSMap('us-east-1', aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+    opts = parser.parse_args()
+
+    aws_map = AWSMap(opts.region, aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
     print aws_map.to_graph()
 
 if __name__ == '__main__':
