@@ -7,7 +7,8 @@ import random
 import string
 import logging
 import traceback
-from local_settings import AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+import os
+import sys
 
 log = logging.getLogger('mapper')
 ch = logging.FileHandler('mapper.log', mode='w')
@@ -328,7 +329,14 @@ def main():
 
     opts = parser.parse_args()
 
-    aws_map = AWSMap(opts.region, aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+    access_key = os.environ.get("AWS_ACCESS_KEY_ID")
+    secret_access = os.environ.get("AWS_SECRET_ACCESS_KEY")
+
+    if access_key is None or secret_access is None:
+        log.warn("AWS Creds required")
+        sys.exit(1)
+
+    aws_map = AWSMap(opts.region, aws_access_key_id=access_key, aws_secret_access_key=secret_access)
     print aws_map.to_graph()
 
 if __name__ == '__main__':
