@@ -129,6 +129,7 @@ class NetworkAcl(Dot):
         "IsDefault": true
     }
     """
+
     def __init__(self, instance, args):
         self.data = instance
         self.name = instance['NetworkAclId']
@@ -235,6 +236,7 @@ class Instance(Dot):
     u'VirtualizationType': u'paravirtual',
     u'VpcId': u'vpc-XXXXXXXX',
     """
+
     def __init__(self, instance, args):
         self.data = instance
         self.name = instance['InstanceId']
@@ -279,7 +281,7 @@ class Instance(Dot):
                 self.connect(fh, self.name, o.name)
                 extraconns = o.subclusterDraw(fh)
         fh.write('graph [style=dotted]\n')
-        fh.write('}\n')   # End subgraph cluster
+        fh.write('}\n')  # End subgraph cluster
         if self['SubnetId']:
             self.connect(fh, self.name, self['SubnetId'])
         for ic, ec in extraconns:
@@ -308,6 +310,7 @@ class Subnet(Dot):
              {u'Key': u'aws:cloudformation:logical-id', u'Value': u'SubnetA3'}],
     u'VpcId': u'vpc-XXXXXXXX',
     """
+
     def __init__(self, subnet, args):
         self.data = subnet
         self.name = subnet['SubnetId']
@@ -363,6 +366,7 @@ class Volume(Dot):
     u'VolumeId': u'vol-XXXXXXXX',
     u'VolumeType': u'standard',
     """
+
     def __init__(self, vol, args):
         self.data = vol
         self.name = vol['VolumeId']
@@ -383,7 +387,8 @@ class Volume(Dot):
                 return
             if self.args.subnet or self.args.vpc:
                 return
-            fh.write('%s [label="Unattached Volume:%s\n%s Gb" %s];\n' % (self.mn(self.name), self.name, self['Size'], self.image()))
+            fh.write('%s [label="Unattached Volume:%s\n%s Gb" %s];\n' % (
+                self.mn(self.name), self.name, self['Size'], self.image()))
 
     def subclusterDraw(self, fh):
         fh.write('%s [shape=box, label="%s\n%s Gb"];\n' % (self.mn(self.name), self.name, self['Size']))
@@ -410,6 +415,7 @@ class SecurityGroup(Dot):
     u'Tags': [{u'Key': u'Key', u'Value': u'Value'}, ...
     u'VpcId': u'vpc-XXXXXXXX',
     """
+
     def __init__(self, sg, args):
         self.data = sg
         self.name = sg['GroupId']
@@ -429,7 +435,8 @@ class SecurityGroup(Dot):
         if eportstr:
             tportstr.append("Egress: %s" % eportstr)
         desc = "\\n".join(chunkstring(self['Description'], 20))
-        fh.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (self.mn(self.name), self.name, desc, "\n".join(tportstr), self.image()))
+        fh.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (
+            self.mn(self.name), self.name, desc, "\n".join(tportstr), self.image()))
 
     def drawSec(self, fh):
         global clusternum
@@ -539,6 +546,7 @@ class VPC(Dot):
     u'State': u'available',
     u'VpcId': u'vpc-XXXXXXXX',
     """
+
     def __init__(self, vpc, args):
         self.data = vpc
         self.name = vpc['VpcId']
@@ -594,6 +602,7 @@ class RouteTable(Dot):
     u'VpcId': u'vpc-XXXXXXXX',
 
     """
+
     def __init__(self, rt, args):
         self.data = rt
         self.args = args
@@ -692,6 +701,7 @@ class NetworkInterface(Dot):
     u'TagSet': [],
     u'VpcId': u'vpc-XXXXXXXX',
     """
+
     def __init__(self, nic, args):
         self.data = nic
         self.args = args
@@ -712,7 +722,8 @@ class NetworkInterface(Dot):
         pass
 
     def subclusterDraw(self, fh):
-        fh.write('%s [label="NIC: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['PrivateIpAddress'], self.image()))
+        fh.write(
+            '%s [label="NIC: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['PrivateIpAddress'], self.image()))
         externallinks = []
         if self.args.security:
             for g in self['Groups']:
@@ -732,6 +743,7 @@ class InternetGateway(Dot):
         {u'Key': u'aws:cloudformation:logical-id', u'Value': u'InternetGateway'},
         {u'Key': u'aws:cloudformation:stack-name', u'Value': u'Stuff'}],
     """
+
     def __init__(self, igw, args):
         self.data = igw
         self.name = igw['InternetGatewayId']
@@ -792,6 +804,7 @@ class LoadBalancer(Dot):
     u'Subnets': [u'subnet-XXXXXXXX', u'subnet-XXXXXXXX'],
     u'VPCId': u'vpc-XXXXXXXX',
     """
+
     def __init__(self, lb, args):
         self.data = lb
         self.name = lb[u'LoadBalancerName']
@@ -817,7 +830,8 @@ class LoadBalancer(Dot):
         ports = []
         for l in self['ListenerDescriptions']:
             x = l['Listener']
-            ports.append("%s/%s -> %s/%s" % (x['LoadBalancerPort'], x['Protocol'], x['InstancePort'], x['InstanceProtocol']))
+            ports.append(
+                "%s/%s -> %s/%s" % (x['LoadBalancerPort'], x['Protocol'], x['InstancePort'], x['InstanceProtocol']))
 
         fh.write('%s [label="ELB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, "\n".join(ports), self.image()))
         for i in self['Instances']:
@@ -877,6 +891,7 @@ class Database(Dot):
     u'ReadReplicaDBInstanceIdentifiers': [],
     u'VpcSecurityGroups': [{u'Status': u'active', u'VpcSecurityGroupId': u'sg-XXXXXXXX'}],
     """
+
     def __init__(self, db, args):
         self.data = db
         self.name = db['DBInstanceIdentifier']
@@ -918,7 +933,74 @@ class Database(Dot):
                 self.connect(fh, self.name, sg['VpcSecurityGroupId'])
 
 
+class ASG(Dot):
+    def __init__(self, db, args):
+        self.data = db
+        self.name = db['AutoScalingGroupName']
+        self.args = args
+
+    """
+    {
+    "AutoScalingGroups": [
+       {
+          "AutoScalingGroupARN": "arn:aws:autoscaling:us-west-2:803981987763:autoScalingGroup:930d940e-891e-4781-a11a-7b0acd480f03:autoScalingGroupName/my-test-asg",
+          "HealthCheckGracePeriod": 0,
+          "SuspendedProcesses": [],
+          "DesiredCapacity": 1,
+          "Tags": [],
+          "EnabledMetrics": [],
+          "LoadBalancerNames": [],
+          "AutoScalingGroupName": "my-test-asg",
+          "DefaultCooldown": 300,
+          "MinSize": 0,
+          "Instances": [
+              {
+                  "InstanceId": "i-4ba0837f",
+                  "AvailabilityZone": "us-west-2c",
+                  "HealthStatus": "Healthy",
+                  "LifecycleState": "InService",
+                  "LaunchConfigurationName": "my-test-lc"
+               }
+           ],
+           "MaxSize": 1,
+           "VPCZoneIdentifier": null,
+           "TerminationPolicies": [
+                 "Default"
+           ],
+           "LaunchConfigurationName": "my-test-lc",
+           "CreatedTime": "2013-08-19T20:53:25.584Z",
+           "AvailabilityZones": [
+               "us-west-2c"
+           ],
+           "HealthCheckType": "EC2"
+       }
+    ]
+}
+
+    """
+
+    def draw(self, fh):
+        if not self.inVpc(self.args.vpc) and not self.inSubnet(self.args.subnet):
+            return
+        fh.write('// ASG %s\n' % self.name)
+        imgstr = self.image(["ASG-%s" % self['Engine'], 'ASG'])
+        fh.write('%s [label="ASG: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['Status'], imgstr))
+        for lb in self['LoadBalancerNames']:
+            if objects[lb].inSubnet(self.args.subnet):
+                self.connect(fh, self.name, lb)
+
+    def inVpc(self, vpc):
+        return True
+        # subnets = self['VPCZoneIdentifier']
+        # for subnet in subnets:
+        # sys.stderr.write(subnet)
+        #     if vpc and self['VPCZoneIdentifier'] == vpc:
+        #         return True
+        # return False
+
+
 ###############################################################################
+
 def header(lbl):
     return '<td bgcolor="black"><font color="white">%s</font></td>' % lbl
 
@@ -957,6 +1039,10 @@ def rdscmd(cmd):
 ###############################################################################
 def ec2cmd(cmd):
     return awscmd(cmd, 'ec2')
+
+
+def asgcmd(cmd):
+    return awscmd(cmd, 'autoscaling')
 
 
 ###############################################################################
@@ -1093,6 +1179,8 @@ def get_all_elbs(args):
     elbs = elbcmd('describe-load-balancers')['LoadBalancerDescriptions']
     for elb in elbs:
         lb = LoadBalancer(elb, args)
+        if args.verbose:
+            sys.stderr.write("ELBs: %s\n" % lb.name)
         objects[lb.name] = lb
 
 
@@ -1109,6 +1197,20 @@ def get_all_networkacls(args):
 
 
 ###############################################################################
+def get_all_asgs(args):
+    if args.verbose:
+        sys.stderr.write("Getting ASGs\n")
+        asgs = asgcmd('describe-auto-scaling-groups')['AutoScalingGroups']
+        for asg in asgs:
+            _asg = ASG(asg, args)
+            objects[_asg.name] = _asg
+            if args.verbose:
+                sys.stderr.write("ASGs: %s\n" % _asg.name)
+
+
+                # objects[]
+
+
 def map_region(args):
     # EC2
     get_vpc_list(args)
@@ -1116,7 +1218,8 @@ def map_region(args):
     get_all_network_interfaces(args)
     get_all_instances(args)
     get_all_subnets(args)
-    get_all_volumes(args)
+    if args.volumes:
+        get_all_volumes(args)
     get_all_route_tables(args)
     get_all_security_groups(args)
     get_all_networkacls(args)
@@ -1126,6 +1229,8 @@ def map_region(args):
 
     # ELB
     get_all_elbs(args)
+
+    get_all_asgs(args)
 
 
 ###############################################################################
@@ -1155,6 +1260,9 @@ def parseArgs():
         '--secmap', default=None,
         help="Draw a security map for specified ec2")
     parser.add_argument(
+        '--volumes', default=False,
+        help="enables volumes")
+    parser.add_argument(
         '-v', '--verbose', default=False, action='store_true',
         help="Print some details")
     args = parser.parse_args()
@@ -1173,6 +1281,7 @@ def generateHeader(fh):
     fh.write("digraph G {\n")
     fh.write('overlap=false\n')
     fh.write('ranksep=1.6\n')
+    fh.write('splines=ortho\n')
 
 
 ###############################################################################
@@ -1243,7 +1352,7 @@ def generate_map(fh, args):
             if obj.__class__ == objtype:
                 obj.rank(fh)
         fh.write('}\n')
-    ranks = ['RouteTable', 'Subnet', 'Database', 'LoadBalancer', 'Instance', 'VPC', 'InternetGateway']
+    ranks = ['ASG', 'RouteTable', 'Subnet', 'Database', 'LoadBalancer', 'Instance', 'VPC', 'InternetGateway']
     strout = " -> ".join(["rank_%s" % x for x in ranks])
     fh.write("%s [style=invis];\n" % strout)
 
@@ -1271,4 +1380,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-#EOF
+# EOF
