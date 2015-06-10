@@ -990,13 +990,12 @@ class ASG(Dot):
                 self.connect(fh, self.name, lb)
 
     def inVpc(self, vpc):
-        return True
-        # subnets = self['VPCZoneIdentifier']
-        # for subnet in subnets:
-        # sys.stderr.write(subnet)
-        #     if vpc and self['VPCZoneIdentifier'] == vpc:
-        #         return True
-        # return False
+        subnets = self['VPCZoneIdentifier']
+        for subnet in subnets.split(','):
+            sys.stderr.write(subnet)
+            if vpc and subnet in objects and objects[subnet]['VpcId'] == vpc:
+                return True
+        return False
 
 
 ###############################################################################
