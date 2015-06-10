@@ -1,1 +1,6 @@
 netaddr
+argparse
+boto
+pydot
+pyparsing
+wsgiref
