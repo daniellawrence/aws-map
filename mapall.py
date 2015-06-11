@@ -102,7 +102,6 @@ class Dot(object):
                 break
         else:
             imagestr = ', shape=box'
-        sys.stderr.write(imagestr)
         return imagestr
 
 
