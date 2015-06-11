@@ -909,7 +909,7 @@ class Database(Dot):
         return False
 
     def inVpc(self, vpc):
-        if vpc and self['DBSubnetGroup']['VpcId'] != vpc:
+        if vpc and self.data.subnet_group.vpc_id != vpc:
             return False
         return True
 
@@ -1219,13 +1219,13 @@ def parseArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--awsflag', default=None, help="Flags to pass to aws calls [None]")
-    # parser.add_argument(
-    #     '--vpc', default=None, help="Which VPC to examine [all]")
-    # parser.add_argument(
-    #     '--subnet', default=None, help="Which subnet to examine [all]")
-    # parser.add_argument(
-    #     '--iterate', default=None, choices=['vpc', 'subnet'],
-    #     help="Create different maps for each vpc or subnet")
+    parser.add_argument(
+        '--vpc', default=None, help="Which VPC to examine [all]")
+    parser.add_argument(
+        '--subnet', default=None, help="Which subnet to examine [all]")
+    parser.add_argument(
+        '--iterate', default=None, choices=['vpc', 'subnet'],
+        help="Create different maps for each vpc or subnet")
     parser.add_argument(
         '--nocache', default=False, action='store_true',
         help="Don't read from cache'd data")
