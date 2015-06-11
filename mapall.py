@@ -6,7 +6,6 @@ import hashlib
 
 import argparse
 import json
-import md5
 import os
 import sys
 import boto
@@ -96,12 +95,14 @@ class Dot(object):
         if not names:
             names = [self.__class__.__name__]
         for name in names:
-            imgfile = os.path.join('images', '%s.png' % name)
+            imgfile = os.path.join('/data/aws-map/images', '%s.png' % name)
+
             if os.path.exists(imgfile):
                 imagestr = ', image="%s", shape=none ' % imgfile
                 break
         else:
             imagestr = ', shape=box'
+        sys.stderr.write(imagestr)
         return imagestr
 
 
