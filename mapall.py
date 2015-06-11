@@ -2,12 +2,14 @@
 #
 # Map AWS setup
 # Images are available from http://aws.amazon.com/architecture/icons/
+import hashlib
 
 import argparse
 import json
 import md5
 import os
 import sys
+import boto
 import netaddr
 
 objects = {}
@@ -132,11 +134,11 @@ class NetworkAcl(Dot):
 
     def __init__(self, instance, args):
         self.data = instance
-        self.name = instance['NetworkAclId']
+        self.name = instance.id
         self.args = args
 
     def inVpc(self, vpc):
-        if vpc and self['VpcId'] != vpc:
+        if vpc and self.data.vpc_id != vpc:
             return False
         return True
 
@@ -239,7 +241,7 @@ class Instance(Dot):
 
     def __init__(self, instance, args):
         self.data = instance
-        self.name = instance['InstanceId']
+        self.name = instance.id
         self.args = args
 
     def inSubnet(self, subnet=None):
@@ -248,7 +250,7 @@ class Instance(Dot):
         return True
 
     def inVpc(self, vpc=None):
-        if vpc and self['VpcId'] != vpc:
+        if vpc and self.data.vpc_id != vpc:
             return False
         return True
 
@@ -271,8 +273,8 @@ class Instance(Dot):
             return
         fh.write('// Instance %s\n' % self.name)
         fh.write('subgraph cluster_%d {\n' % clusternum)
-        if self.tags('Name'):
-            fh.write('label = "%s"\n' % self.tags('Name'))
+        if 'Name' in self.data.tags:
+            fh.write('label = "%s"\n' % self.data.tags['Name'])
         fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), self.name, self.image()))
 
         extraconns = []
@@ -282,14 +284,14 @@ class Instance(Dot):
                 extraconns = o.subclusterDraw(fh)
         fh.write('graph [style=dotted]\n')
         fh.write('}\n')  # End subgraph cluster
-        if self['SubnetId']:
-            self.connect(fh, self.name, self['SubnetId'])
+        if self.data.subnet_id:
+            self.connect(fh, self.name, self.data.subnet_id)
         for ic, ec in extraconns:
             self.connect(fh, ic, ec)
         clusternum += 1
         if self.args.security:
-            for sg in self['SecurityGroups']:
-                self.connect(fh, self.name, sg['GroupId'])
+            for sg in self.data.groups:
+                self.connect(fh, self.name, sg.id)
 
 
 ###############################################################################
@@ -313,17 +315,17 @@ class Subnet(Dot):
 
     def __init__(self, subnet, args):
         self.data = subnet
-        self.name = subnet['SubnetId']
+        self.name = subnet.id
         self.args = args
 
     def inVpc(self, vpc):
-        if vpc and self['VpcId'] != vpc:
+        if vpc and self.data.vpc_id != vpc:
             return False
         return True
 
     def relevent_to_ip(self, ip):
-        if netaddr.IPAddress(ip) in netaddr.IPNetwork(self['CidrBlock']):
-            print "Subnet %s - ip %s is relevent to %s" % (self.name, ip, self['CidrBlock'])
+        if netaddr.IPAddress(ip) in netaddr.IPNetwork(self.data.cidr_block):
+            print "Subnet %s - ip %s is relevent to %s" % (self.name, ip, self.data.cidr_block)
             return True
         return False
 
@@ -338,15 +340,15 @@ class Subnet(Dot):
 
     def drawSec(self, fh):
         fh.write('// Subnet %s\n' % self.name)
-        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self['CidrBlock'], self.image()))
-        self.connect(fh, self.name, self['VpcId'])
+        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self.data.cidr_block, self.image()))
+        self.connect(fh, self.name, self.data.vpc_id)
 
     def draw(self, fh):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         fh.write('// Subnet %s\n' % self.name)
-        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self['CidrBlock'], self.image()))
-        self.connect(fh, self.name, self['VpcId'])
+        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self.data.cidr_block, self.image()))
+        self.connect(fh, self.name, self.data.vpc_id)
 
 
 ###############################################################################
@@ -418,23 +420,23 @@ class SecurityGroup(Dot):
 
     def __init__(self, sg, args):
         self.data = sg
-        self.name = sg['GroupId']
+        self.name = sg.id
         self.args = args
         self.drawn = False
 
     def draw(self, fh):
-        if self.args.vpc and self['VpcId'] != self.args.vpc:
+        if self.args.vpc and self.data.vpc_id != self.args.vpc:
             return
 
-        portstr = self.permstring(fh, self['IpPermissions'])
-        eportstr = self.permstring(fh, self['IpPermissionsEgress'])
+        portstr = self.permstring(fh, self.data.rules)
+        eportstr = self.permstring(fh, self.data.rules_egress)
 
         tportstr = []
         if portstr:
             tportstr.append("Ingress: %s" % portstr)
         if eportstr:
             tportstr.append("Egress: %s" % eportstr)
-        desc = "\\n".join(chunkstring(self['Description'], 20))
+        desc = "\\n".join(chunkstring(self.data.description, 20))
         fh.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (
             self.mn(self.name), self.name, desc, "\n".join(tportstr), self.image()))
 
@@ -521,16 +523,16 @@ class SecurityGroup(Dot):
         if not obj:
             return ''
         for ip in obj:
-            if ip['UserIdGroupPairs']:
-                for pair in ip['UserIdGroupPairs']:
-                    self.connect(fh, self.name, pair['GroupId'])
-            if 'FromPort' in ip and ip['FromPort']:
+            if ip.grants.__len__ > 0:
+                for pair in ip.grants:
+                    self.connect(fh, self.name, pair.group_id)
+            if ip.from_port is not None:
                 ipranges = []
-                for ipr in ip['IpRanges']:
-                    if 'CidrIp' in ipr:
-                        ipranges.append(ipr['CidrIp'])
+                for ipr in ip.grants:
+                    if ipr.cidr_ip is not None:
+                        ipranges.append(ipr.cidr_ip)
                 iprangestr = ';'.join(ipranges)
-                ans.append("%s %s->%s/%s" % (iprangestr, ip['FromPort'], ip['ToPort'], ip['IpProtocol']))
+                ans.append("%s %s->%s/%s" % (iprangestr, ip.from_port, ip.to_port, ip.ip_protocol))
         return " ".join(ans)
 
 
@@ -549,7 +551,7 @@ class VPC(Dot):
 
     def __init__(self, vpc, args):
         self.data = vpc
-        self.name = vpc['VpcId']
+        self.name = vpc.id
         self.args = args
 
     def inVpc(self, vpc):
@@ -566,8 +568,8 @@ class VPC(Dot):
         return False
 
     def relevent_to_ip(self, ip):
-        if netaddr.IPAddress(ip) in netaddr.IPNetwork(self['CidrBlock']):
-            print "VPC %s - ip %s is relevent to %s" % (self.name, ip, self['CidrBlock'])
+        if netaddr.IPAddress(ip) in netaddr.IPNetwork(self.data.cidr_block):
+            print "VPC %s - ip %s is relevent to %s" % (self.name, ip, self.data.cidr_block)
             return True
         return False
 
@@ -606,14 +608,14 @@ class RouteTable(Dot):
     def __init__(self, rt, args):
         self.data = rt
         self.args = args
-        self.name = self['RouteTableId']
+        self.name = rt.id
 
     def rank(self, fh):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             fh.write("%s;" % self.mn())
 
     def inVpc(self, vpc):
-        if vpc and self['VpcId'] != vpc:
+        if vpc and self.data.vpc_id != vpc:
             return False
         return True
 
@@ -655,20 +657,20 @@ class RouteTable(Dot):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         routelist = []
-        for rt in self['Routes']:
-            if 'DestinationCidrBlock' in rt:
-                routelist.append(rt['DestinationCidrBlock'])
+        for rt in self.data.routes:
+            if rt.destination_cidr_block is not None:
+                routelist.append(rt.destination_cidr_block)
         fh.write('%s [label="RT: %s\n%s" %s];\n' % (self.mn(), self.name, ";".join(routelist), self.image()))
-        for ass in self['Associations']:
-            if 'SubnetId' in ass:
-                if objects[ass['SubnetId']].inSubnet(self.args.subnet):
-                    self.connect(fh, self.name, ass['SubnetId'])
-        for rt in self['Routes']:
-            if 'InstanceId' in rt:
-                if objects[rt['InstanceId']].inSubnet(self.args.subnet):
-                    self.connect(fh, self.name, rt['InstanceId'])
-            elif 'NetworkInterfaceId' in rt:
-                self.connect(fh, self.name, rt['NetworkInterfaceId'])
+        for ass in self.data.associations:
+            if ass.subnet_id is not None:
+                if objects[ass.subnet_id].inSubnet(self.args.subnet):
+                    self.connect(fh, self.name, ass.subnet_id)
+        for rt in self.data.routes:
+            if rt.instance_id is not None:
+                if objects[rt.instance_id].inSubnet(self.args.subnet):
+                    self.connect(fh, self.name, rt.instance_id)
+            elif rt.interface_id is not None:
+                self.connect(fh, self.name, rt.instance_id)
 
 
 ###############################################################################
@@ -705,7 +707,7 @@ class NetworkInterface(Dot):
     def __init__(self, nic, args):
         self.data = nic
         self.args = args
-        self.name = self['NetworkInterfaceId']
+        self.name = nic.id
 
     def partOfInstance(self, instid):
         try:
@@ -746,10 +748,11 @@ class InternetGateway(Dot):
 
     def __init__(self, igw, args):
         self.data = igw
-        self.name = igw['InternetGatewayId']
+        self.name = igw.id
         self.conns = []
-        for i in igw['Attachments']:
-            self.conns.append(i['VpcId'])
+        for i in igw.attachments:
+            # print(i)
+            self.conns.append(i)
         self.args = args
 
     def rank(self, fh):
@@ -772,7 +775,7 @@ class InternetGateway(Dot):
         if self.conns:
             fh.write('%s [label="InternetGateway: %s" %s];\n' % (self.mn(self.name), self.name, self.image()))
             for i in self.conns:
-                self.connect(fh, self.name, i)
+                self.connect(fh, self.name, i.vpc_id)
 
 
 ###############################################################################
@@ -807,16 +810,16 @@ class LoadBalancer(Dot):
 
     def __init__(self, lb, args):
         self.data = lb
-        self.name = lb[u'LoadBalancerName']
+        self.name = lb.name
         self.args = args
 
     def inSubnet(self, subnet=None):
-        if subnet and subnet not in self['Subnets']:
+        if subnet and subnet not in self.data.subnets:
             return False
         return True
 
     def inVpc(self, vpc):
-        if vpc and self['VPCId'] != vpc:
+        if vpc and self.data.vpc_id != vpc:
             return False
         return True
 
@@ -828,22 +831,22 @@ class LoadBalancer(Dot):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         ports = []
-        for l in self['ListenerDescriptions']:
-            x = l['Listener']
+        for l in self.data.listeners:
+            # x = l['Listener']
             ports.append(
-                "%s/%s -> %s/%s" % (x['LoadBalancerPort'], x['Protocol'], x['InstancePort'], x['InstanceProtocol']))
+                "%s/%s -> %s/%s" % (l.load_balancer_port, l.protocol, l.instance_port, l.instance_protocol))
 
         fh.write('%s [label="ELB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, "\n".join(ports), self.image()))
-        for i in self['Instances']:
-            if objects[i['InstanceId']].inSubnet(self.args.subnet):
-                self.connect(fh, self.name, i['InstanceId'])
-        for s in self['Subnets']:
+        for i in self.data.instances:
+            if objects[i.id].inSubnet(self.args.subnet):
+                self.connect(fh, self.name, i.id)
+        for s in self.data.subnets:
             if self.args.subnet:
                 if s != self.args.subnet:
                     continue
             self.connect(fh, self.name, s)
         if self.args.security:
-            for sg in self['SecurityGroups']:
+            for sg in self.data.security_groups:
                 self.connect(fh, self.name, sg)
 
 
@@ -894,7 +897,7 @@ class Database(Dot):
 
     def __init__(self, db, args):
         self.data = db
-        self.name = db['DBInstanceIdentifier']
+        self.name = db.id
         self.args = args
 
     def inSubnet(self, subnet=None):
@@ -922,21 +925,21 @@ class Database(Dot):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         fh.write('// Database %s\n' % self.name)
-        imgstr = self.image(["Database-%s" % self['Engine'], 'Database'])
-        fh.write('%s [label="DB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['Engine'], imgstr))
-        for subnet in self['DBSubnetGroup']['Subnets']:
-            if subnet['SubnetStatus'] == 'Active':
-                if objects[subnet['SubnetIdentifier']].inSubnet(self.args.subnet):
-                    self.connect(fh, self.name, subnet['SubnetIdentifier'])
+        imgstr = self.image(["Database-%s" % self.data.engine, 'Database'])
+        fh.write('%s [label="DB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self.data.engine, imgstr))
+        for subnet in self.data.subnet_group.subnet_ids:
+            # if subnet.SubnetStatus == 'Active':
+                if objects[subnet].inSubnet(self.args.subnet):
+                    self.connect(fh, self.name, subnet)
         if self.args.security:
-            for sg in self['VpcSecurityGroups']:
-                self.connect(fh, self.name, sg['VpcSecurityGroupId'])
+            for sg in self.data.vpc_security_groups:
+                self.connect(fh, self.name, sg.vpc_group)
 
 
 class ASG(Dot):
     def __init__(self, db, args):
         self.data = db
-        self.name = db['AutoScalingGroupName']
+        self.name = db.name
         self.args = args
 
     """
@@ -983,17 +986,17 @@ class ASG(Dot):
         if not self.inVpc(self.args.vpc) and not self.inSubnet(self.args.subnet):
             return
         fh.write('// ASG %s\n' % self.name)
-        imgstr = self.image(["ASG-%s" % self['Engine'], 'ASG'])
-        fh.write('%s [label="ASG: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['Status'], imgstr))
-        for lb in self['LoadBalancerNames']:
+        imgstr = self.image(["ASG-%s", 'ASG'])
+        fh.write('%s [label="ASG: %s\n%s" %s];\n' % (self.mn(self.name), self.name, '', imgstr))
+        for lb in self.data.load_balancers:
             if objects[lb].inSubnet(self.args.subnet):
                 self.connect(fh, self.name, lb)
 
     def inVpc(self, vpc):
-        subnets = self['VPCZoneIdentifier']
+        subnets = self.data.vpc_zone_identifier
         for subnet in subnets.split(','):
-            sys.stderr.write(subnet)
-            if vpc and subnet in objects and objects[subnet]['VpcId'] == vpc:
+            # sys.stderr.write(subnet)
+            if vpc and subnet in objects and objects[subnet].data.vpc_id == vpc:
                 return True
         return False
 
@@ -1024,55 +1027,13 @@ def chunkstring(strng, length):
     ans.append(" ".join(line))
     return ans
 
-
-###############################################################################
-def elbcmd(cmd):
-    return awscmd(cmd, 'elb')
-
-
-###############################################################################
-def rdscmd(cmd):
-    return awscmd(cmd, 'rds')
-
-
-###############################################################################
-def ec2cmd(cmd):
-    return awscmd(cmd, 'ec2')
-
-
-def asgcmd(cmd):
-    return awscmd(cmd, 'autoscaling')
-
-
-###############################################################################
-def awscmd(cmd, area='ec2'):
-    cachepath = '.cache'
-    if not os.path.exists(cachepath):
-        os.mkdir(cachepath)
-    fullcmd = 'aws %s %s %s' % (" ".join(awsflags), area, cmd)
-    cachefile = os.path.join(cachepath, md5.md5(fullcmd).hexdigest())
-
-    if not nocache and os.path.exists(cachefile):
-        with open(cachefile) as f:
-            data = f.read()
-    else:
-        with os.popen(fullcmd) as f:
-            data = f.read()
-            with open(cachefile, 'w') as g:
-                g.write(data)
-
-    try:
-        return json.loads(data)
-    except ValueError:
-        sys.stderr.write("Failed to decode output from %s\n%s\n" % (fullcmd, data))
-        sys.exit(1)
-
-
 ###############################################################################
 def get_all_internet_gateways(args):
     if args.verbose:
         sys.stderr.write("Getting internet gateways\n")
-    igw_data = ec2cmd("describe-internet-gateways")['InternetGateways']
+    # igw_data = ec2cmd("describe-internet-gateways")['InternetGateways']
+    import boto.vpc
+    igw_data = boto.vpc.connect_to_region(args.region).get_all_internet_gateways()
     for igw in igw_data:
         g = InternetGateway(igw, args)
         objects[g.name] = g
@@ -1080,12 +1041,14 @@ def get_all_internet_gateways(args):
 
 ###############################################################################
 def get_vpc_list(args):
-    vpc_data = ec2cmd("describe-vpcs")['Vpcs']
+    import boto.vpc
+    vpc_data = boto.vpc.connect_to_region(args.region).get_all_vpcs()
+    # vpc_data = ec2cmd("describe-vpcs")['Vpcs']
     for vpc in vpc_data:
-        if args.vpc and vpc['VpcId'] != args.vpc:
+        if args.vpc and vpc.id != args.vpc:
             continue
         if args.verbose:
-            sys.stderr.write("VPC: %s\n" % vpc['VpcId'])
+            sys.stderr.write("VPC: %s\n" % vpc.id)
         g = VPC(vpc, args)
         objects[g.name] = g
 
@@ -1094,9 +1057,11 @@ def get_vpc_list(args):
 def get_all_instances(args):
     if args.verbose:
         sys.stderr.write("Getting instances\n")
-    reservation_list = ec2cmd("describe-instances")['Reservations']
+    import boto.ec2
+    reservation_list = boto.ec2.connect_to_region(args.region).get_all_reservations()
+    # reservation_list = ec2cmd("describe-instances")['Reservations']
     for reservation in reservation_list:
-        for instance in reservation['Instances']:
+        for instance in reservation.instances:
             i = Instance(instance, args)
             objects[i.name] = i
             if args.verbose:
@@ -1107,12 +1072,13 @@ def get_all_instances(args):
 def get_all_subnets(args):
     if args.verbose:
         sys.stderr.write("Getting subnets\n")
-    subnets = ec2cmd("describe-subnets")['Subnets']
+    import boto.vpc
+    subnets = boto.vpc.connect_to_region(args.region).get_all_subnets()
     for subnet in subnets:
-        if args.subnet and subnet['SubnetId'] != args.subnet:
+        if args.subnet and subnet.id != args.subnet:
             pass
         elif args.verbose:
-            sys.stderr.write("Subnet: %s\n" % subnet['SubnetId'])
+            sys.stderr.write("Subnet: %s\n" % subnet.id)
         s = Subnet(subnet, args)
         objects[s.name] = s
 
@@ -1131,7 +1097,9 @@ def get_all_volumes(args):
 def get_all_security_groups(args):
     if args.verbose:
         sys.stderr.write("Getting security groups\n")
-    sgs = ec2cmd("describe-security-groups")['SecurityGroups']
+    import boto.ec2
+    sgs = boto.ec2.connect_to_region(args.region).get_all_security_groups()
+    # sgs = ec2cmd("describe-security-groups")['SecurityGroups']
     for sg in sgs:
         s = SecurityGroup(sg, args)
         objects[s.name] = s
@@ -1143,7 +1111,9 @@ def get_all_security_groups(args):
 def get_all_route_tables(args):
     if args.verbose:
         sys.stderr.write("Getting route tables\n")
-    rts = ec2cmd('describe-route-tables')['RouteTables']
+    # rts = ec2cmd('describe-route-tables')['RouteTables']
+    import boto.vpc
+    rts = boto.vpc.connect_to_region(args.region).get_all_route_tables()
     for rt in rts:
         r = RouteTable(rt, args)
         objects[r.name] = r
@@ -1153,7 +1123,9 @@ def get_all_route_tables(args):
 def get_all_network_interfaces(args):
     if args.verbose:
         sys.stderr.write("Getting NICs\n")
-    nics = ec2cmd('describe-network-interfaces')['NetworkInterfaces']
+    import boto.ec2
+    nics = boto.ec2.connect_to_region(args.region).get_all_network_interfaces()
+    # nics = ec2cmd('describe-network-interfaces')['NetworkInterfaces']
     for nic in nics:
         n = NetworkInterface(nic, args)
         objects[n.name] = n
@@ -1163,7 +1135,9 @@ def get_all_network_interfaces(args):
 def get_all_rds(args):
     if args.verbose:
         sys.stderr.write("Getting Databases\n")
-    dbs = rdscmd('describe-db-instances')['DBInstances']
+    import boto.rds
+    dbs = boto.rds.connect_to_region(args.region).get_all_dbinstances()
+    # dbs = rdscmd('describe-db-instances')['DBInstances']
     for db in dbs:
         rds = Database(db, args)
         objects[rds.name] = rds
@@ -1175,7 +1149,9 @@ def get_all_rds(args):
 def get_all_elbs(args):
     if args.verbose:
         sys.stderr.write("Getting Load Balancers\n")
-    elbs = elbcmd('describe-load-balancers')['LoadBalancerDescriptions']
+    import boto.ec2.elb
+    elbs = boto.ec2.elb.connect_to_region(args.region).get_all_load_balancers()
+    # elbs = elbcmd('describe-load-balancers')['LoadBalancerDescriptions']
     for elb in elbs:
         lb = LoadBalancer(elb, args)
         if args.verbose:
@@ -1187,7 +1163,9 @@ def get_all_elbs(args):
 def get_all_networkacls(args):
     if args.verbose:
         sys.stderr.write("Getting NACLs\n")
-    nacls = ec2cmd('describe-network-acls')['NetworkAcls']
+    import boto.vpc
+    nacls = boto.vpc.connect_to_region(args.region).get_all_network_acls()
+    # nacls = ec2cmd('describe-network-acls')['NetworkAcls']
     for nacl in nacls:
         nc = NetworkAcl(nacl, args)
         objects[nc.name] = nc
@@ -1199,12 +1177,14 @@ def get_all_networkacls(args):
 def get_all_asgs(args):
     if args.verbose:
         sys.stderr.write("Getting ASGs\n")
-        asgs = asgcmd('describe-auto-scaling-groups')['AutoScalingGroups']
-        for asg in asgs:
-            _asg = ASG(asg, args)
-            objects[_asg.name] = _asg
-            if args.verbose:
-                sys.stderr.write("ASGs: %s\n" % _asg.name)
+    # asgs = asgcmd('describe-auto-scaling-groups')['AutoScalingGroups']
+    import boto.ec2.autoscale
+    asgs = boto.ec2.autoscale.connect_to_region(args.region).get_all_groups()
+    for asg in asgs:
+        _asg = ASG(asg, args)
+        objects[_asg.name] = _asg
+        if args.verbose:
+            sys.stderr.write("ASGs: %s\n" % _asg.name)
 
 
                 # objects[]
@@ -1239,13 +1219,13 @@ def parseArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--awsflag', default=None, help="Flags to pass to aws calls [None]")
-    parser.add_argument(
-        '--vpc', default=None, help="Which VPC to examine [all]")
-    parser.add_argument(
-        '--subnet', default=None, help="Which subnet to examine [all]")
-    parser.add_argument(
-        '--iterate', default=None, choices=['vpc', 'subnet'],
-        help="Create different maps for each vpc or subnet")
+    # parser.add_argument(
+    #     '--vpc', default=None, help="Which VPC to examine [all]")
+    # parser.add_argument(
+    #     '--subnet', default=None, help="Which subnet to examine [all]")
+    # parser.add_argument(
+    #     '--iterate', default=None, choices=['vpc', 'subnet'],
+    #     help="Create different maps for each vpc or subnet")
     parser.add_argument(
         '--nocache', default=False, action='store_true',
         help="Don't read from cache'd data")
@@ -1264,6 +1244,9 @@ def parseArgs():
     parser.add_argument(
         '-v', '--verbose', default=False, action='store_true',
         help="Print some details")
+    parser.add_argument(
+        '--region', default=None,
+        help="ec2 region")
     args = parser.parse_args()
     nocache = args.nocache
     if args.vpc and not args.vpc.startswith('vpc-'):
