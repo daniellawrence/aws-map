@@ -982,11 +982,15 @@ class ASG(Dot):
 
     """
 
+    def image(self, names=[]):
+        return super(ASG, self).image(names)
+
+
     def draw(self, fh):
         if not self.inVpc(self.args.vpc) and not self.inSubnet(self.args.subnet):
             return
         fh.write('// ASG %s\n' % self.name)
-        imgstr = self.image(["ASG-%s", 'ASG'])
+        imgstr = self.image(["ASG-%s" % self.data.name, 'ASG'])
         fh.write('%s [label="ASG: %s\n%s" %s];\n' % (self.mn(self.name), self.name, '', imgstr))
         for lb in self.data.load_balancers:
             if objects[lb].inSubnet(self.args.subnet):
