@@ -94,11 +94,12 @@ class Dot(object):
     def image(self, names=[]):
         if not names:
             names = [self.__class__.__name__]
+
         for name in names:
-            imgfile = os.path.join('/data/aws-map/images', '%s.png' % name)
+            imgfile = os.path.join('images', '%s.png' % name)
 
             if os.path.exists(imgfile):
-                imagestr = ', image="%s", shape=none ' % imgfile
+                imagestr = ', image="%s", shape=box ' % imgfile
                 break
         else:
             imagestr = ', shape=box'
