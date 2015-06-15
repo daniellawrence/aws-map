@@ -2,10 +2,8 @@
 #
 # Map AWS setup
 # Images are available from http://aws.amazon.com/architecture/icons/
-import hashlib
-
 import argparse
-import json
+import time
 import os
 import sys
 import boto
@@ -19,6 +17,60 @@ secGrpToDraw = set()
 
 colours = ['azure', 'coral', 'wheat', 'deepskyblue', 'firebrick', 'gold', 'green', 'plum', 'salmon', 'sienna']
 
+
+class RetryLimitExceeded(Exception):
+    def __init__(self, exception, retries):
+        self.exception = exception
+        self.tries = retries
+
+    def __str__(self):
+        return repr(
+            "Throttling retry limit exceeded, no_of_tries(%s), last exception: %s" % (self.tries, self.exception))
+
+
+def get_api_error_code(exception):
+    if hasattr(exception, "body"):
+        if exception.body is not None and hasattr(exception.body, "split"):
+            code = exception.body.split("<Code>")[1]
+            code = code.split("</Code>")[0]
+            return code
+        else:
+            return ""
+    else:
+        return ""
+
+
+def paginate_boto_response(api_call, *args, **kwargs):
+    resultset = []
+    tries = 0
+    retry_interval = 2
+    retry = 10
+    while True:
+
+        tries += 1
+        try:
+            results = api_call(*args, **kwargs)
+            if results:
+                resultset += results
+                if results.next_token:
+                    kwargs['next_token'] = results.next_token
+                else:
+                    break
+            else:
+                break
+        except Exception, e:
+            last_exception = e
+            code = get_api_error_code(e)
+            if retry <= 0:
+                raise RetryLimitExceeded(last_exception, tries)
+            elif retry > 0 and (code == "Throttling" or code == "RequestLimitExceeded"):
+                retry -= 1
+                retry_interval += 1
+                time.sleep(retry_interval)
+            else:
+                raise e
+
+    return resultset
 
 ###############################################################################
 ###############################################################################
@@ -275,8 +327,10 @@ class Instance(Dot):
         fh.write('// Instance %s\n' % self.name)
         fh.write('subgraph cluster_%d {\n' % clusternum)
         if 'Name' in self.data.tags:
-            fh.write('label = "%s"\n' % self.data.tags['Name'])
-        fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), self.name, self.image()))
+            label = self.data.tags['Name']
+        else:
+            label = self.name
+        fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), label, self.image()))
 
         extraconns = []
         for o in objects.values():
@@ -347,8 +401,13 @@ class Subnet(Dot):
     def draw(self, fh):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
+        if 'Name' in self.data.tags:
+            label = self.data.tags['Name']
+        else:
+            label = self.name
+
         fh.write('// Subnet %s\n' % self.name)
-        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self.data.cidr_block, self.image()))
+        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), label, self.data.cidr_block, self.image()))
         self.connect(fh, self.name, self.data.vpc_id)
 
 
@@ -986,24 +1045,28 @@ class ASG(Dot):
     def image(self, names=[]):
         return super(ASG, self).image(names)
 
-
     def draw(self, fh):
-        if not self.inVpc(self.args.vpc) and not self.inSubnet(self.args.subnet):
-            return
-        fh.write('// ASG %s\n' % self.name)
-        imgstr = self.image(["ASG-%s" % self.data.name, 'ASG'])
-        fh.write('%s [label="ASG: %s\n%s" %s];\n' % (self.mn(self.name), self.name, '', imgstr))
-        for lb in self.data.load_balancers:
-            if objects[lb].inSubnet(self.args.subnet):
-                self.connect(fh, self.name, lb)
+        if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
+            fh.write('// ASG %s\n' % self.name)
+            imgstr = self.image(["ASG-%s" % self.data.name, 'ASG'])
+            fh.write('%s [label="ASG: %s\n%s" %s];\n' % (self.mn(self.name), self.name, '', imgstr))
+            for lb in self.data.load_balancers:
+                if objects[lb].inSubnet(self.args.subnet):
+                    self.connect(fh, self.name, lb)
+
+    def rank(self, fh):
+        if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
+            fh.write("%s;" % self.mn())
 
     def inVpc(self, vpc):
-        subnets = self.data.vpc_zone_identifier
-        for subnet in subnets.split(','):
-            # sys.stderr.write(subnet)
-            if vpc and subnet in objects and objects[subnet].data.vpc_id == vpc:
-                return True
-        return False
+        if vpc:
+            subnets = self.data.vpc_zone_identifier
+            for subnet in subnets.split(','):
+                # sys.stderr.write(subnet)
+                if vpc and subnet in objects and objects[subnet].data.vpc_id == vpc:
+                    return True
+            return False
+        return True
 
 
 ###############################################################################
@@ -1038,7 +1101,7 @@ def get_all_internet_gateways(args):
         sys.stderr.write("Getting internet gateways\n")
     # igw_data = ec2cmd("describe-internet-gateways")['InternetGateways']
     import boto.vpc
-    igw_data = boto.vpc.connect_to_region(args.region).get_all_internet_gateways()
+    igw_data = paginate_boto_response(boto.vpc.connect_to_region(args.region).get_all_internet_gateways)
     for igw in igw_data:
         g = InternetGateway(igw, args)
         objects[g.name] = g
@@ -1047,7 +1110,7 @@ def get_all_internet_gateways(args):
 ###############################################################################
 def get_vpc_list(args):
     import boto.vpc
-    vpc_data = boto.vpc.connect_to_region(args.region).get_all_vpcs()
+    vpc_data = paginate_boto_response(boto.vpc.connect_to_region(args.region).get_all_vpcs)
     # vpc_data = ec2cmd("describe-vpcs")['Vpcs']
     for vpc in vpc_data:
         if args.vpc and vpc.id != args.vpc:
@@ -1063,7 +1126,7 @@ def get_all_instances(args):
     if args.verbose:
         sys.stderr.write("Getting instances\n")
     import boto.ec2
-    reservation_list = boto.ec2.connect_to_region(args.region).get_all_reservations()
+    reservation_list = paginate_boto_response(boto.ec2.connect_to_region(args.region).get_all_reservations)
     # reservation_list = ec2cmd("describe-instances")['Reservations']
     for reservation in reservation_list:
         for instance in reservation.instances:
@@ -1078,7 +1141,7 @@ def get_all_subnets(args):
     if args.verbose:
         sys.stderr.write("Getting subnets\n")
     import boto.vpc
-    subnets = boto.vpc.connect_to_region(args.region).get_all_subnets()
+    subnets = paginate_boto_response(boto.vpc.connect_to_region(args.region).get_all_subnets)
     for subnet in subnets:
         if args.subnet and subnet.id != args.subnet:
             pass
@@ -1092,7 +1155,8 @@ def get_all_subnets(args):
 def get_all_volumes(args):
     if args.verbose:
         sys.stderr.write("Getting volumes\n")
-    volumes = ec2cmd("describe-volumes")['Volumes']
+    # volumes = ec2cmd("describe-volumes")['Volumes']
+    volumes = paginate_boto_response(boto.ec2.connect_to_region(args.region).get_all_volumes)
     for volume in volumes:
         v = Volume(volume, args)
         objects[v.name] = v
@@ -1103,7 +1167,7 @@ def get_all_security_groups(args):
     if args.verbose:
         sys.stderr.write("Getting security groups\n")
     import boto.ec2
-    sgs = boto.ec2.connect_to_region(args.region).get_all_security_groups()
+    sgs = paginate_boto_response(boto.ec2.connect_to_region(args.region).get_all_security_groups)
     # sgs = ec2cmd("describe-security-groups")['SecurityGroups']
     for sg in sgs:
         s = SecurityGroup(sg, args)
@@ -1118,7 +1182,7 @@ def get_all_route_tables(args):
         sys.stderr.write("Getting route tables\n")
     # rts = ec2cmd('describe-route-tables')['RouteTables']
     import boto.vpc
-    rts = boto.vpc.connect_to_region(args.region).get_all_route_tables()
+    rts = paginate_boto_response(boto.vpc.connect_to_region(args.region).get_all_route_tables)
     for rt in rts:
         r = RouteTable(rt, args)
         objects[r.name] = r
@@ -1129,7 +1193,7 @@ def get_all_network_interfaces(args):
     if args.verbose:
         sys.stderr.write("Getting NICs\n")
     import boto.ec2
-    nics = boto.ec2.connect_to_region(args.region).get_all_network_interfaces()
+    nics = paginate_boto_response(boto.ec2.connect_to_region(args.region).get_all_network_interfaces)
     # nics = ec2cmd('describe-network-interfaces')['NetworkInterfaces']
     for nic in nics:
         n = NetworkInterface(nic, args)
@@ -1141,7 +1205,7 @@ def get_all_rds(args):
     if args.verbose:
         sys.stderr.write("Getting Databases\n")
     import boto.rds
-    dbs = boto.rds.connect_to_region(args.region).get_all_dbinstances()
+    dbs = paginate_boto_response(boto.rds.connect_to_region(args.region).get_all_dbinstances)
     # dbs = rdscmd('describe-db-instances')['DBInstances']
     for db in dbs:
         rds = Database(db, args)
@@ -1155,7 +1219,7 @@ def get_all_elbs(args):
     if args.verbose:
         sys.stderr.write("Getting Load Balancers\n")
     import boto.ec2.elb
-    elbs = boto.ec2.elb.connect_to_region(args.region).get_all_load_balancers()
+    elbs = paginate_boto_response(boto.ec2.elb.connect_to_region(args.region).get_all_load_balancers)
     # elbs = elbcmd('describe-load-balancers')['LoadBalancerDescriptions']
     for elb in elbs:
         lb = LoadBalancer(elb, args)
@@ -1169,7 +1233,7 @@ def get_all_networkacls(args):
     if args.verbose:
         sys.stderr.write("Getting NACLs\n")
     import boto.vpc
-    nacls = boto.vpc.connect_to_region(args.region).get_all_network_acls()
+    nacls = paginate_boto_response(boto.vpc.connect_to_region(args.region).get_all_network_acls)
     # nacls = ec2cmd('describe-network-acls')['NetworkAcls']
     for nacl in nacls:
         nc = NetworkAcl(nacl, args)
@@ -1184,15 +1248,12 @@ def get_all_asgs(args):
         sys.stderr.write("Getting ASGs\n")
     # asgs = asgcmd('describe-auto-scaling-groups')['AutoScalingGroups']
     import boto.ec2.autoscale
-    asgs = boto.ec2.autoscale.connect_to_region(args.region).get_all_groups()
+    asgs = paginate_boto_response(boto.ec2.autoscale.connect_to_region(args.region).get_all_groups)
     for asg in asgs:
         _asg = ASG(asg, args)
         objects[_asg.name] = _asg
         if args.verbose:
             sys.stderr.write("ASGs: %s\n" % _asg.name)
-
-
-                # objects[]
 
 
 def map_region(args):
@@ -1331,7 +1392,7 @@ def generate_map(fh, args):
         obj.draw(fh)
 
     # Assign Ranks
-    for objtype in [Database, LoadBalancer, Subnet, Instance, VPC, InternetGateway, RouteTable]:
+    for objtype in [Database, LoadBalancer, Subnet, Instance, VPC, InternetGateway, RouteTable, ASG]:
         fh.write('// Rank %s\n' % objtype.__name__)
         fh.write('rank_%s [style=invisible]\n' % objtype.__name__)
         fh.write('{ rank=same; rank_%s; ' % objtype.__name__)
@@ -1339,7 +1400,7 @@ def generate_map(fh, args):
             if obj.__class__ == objtype:
                 obj.rank(fh)
         fh.write('}\n')
-    ranks = ['ASG', 'RouteTable', 'Subnet', 'Database', 'LoadBalancer', 'Instance', 'VPC', 'InternetGateway']
+    ranks = ['RouteTable', 'Subnet', 'Database', 'LoadBalancer', 'ASG', 'Instance', 'VPC', 'InternetGateway']
     strout = " -> ".join(["rank_%s" % x for x in ranks])
     fh.write("%s [style=invis];\n" % strout)
 
