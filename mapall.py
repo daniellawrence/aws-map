@@ -96,7 +96,7 @@ class Dot(object):
             names = [self.__class__.__name__]
 
         for name in names:
-            imgfile = os.path.join('images', '%s.png' % name)
+            imgfile = os.path.join(os.path.realpath(os.path.dirname(__file__)), 'images', '%s.png' % name)
 
             if os.path.exists(imgfile):
                 imagestr = ', image="%s", shape=box ' % imgfile
