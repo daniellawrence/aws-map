@@ -313,7 +313,7 @@ class Instance(Dot):
 
     def drawSec(self, fh):
         fh.write('// Instance %s\n' % self.name)
-        label = "%s\\n%s\n%s" % (self.tags('Name'), self.name, self['PrivateIpAddress'])
+        label = "%s\\n%s\\n%s" % (self.tags('Name'), self.name, self['PrivateIpAddress'])
         fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), label, self.image()))
         for sg in self['SecurityGroups']:
             self.connect(fh, self.name, sg['GroupId'])
@@ -497,7 +497,7 @@ class SecurityGroup(Dot):
         if eportstr:
             tportstr.append("Egress: %s" % eportstr)
         desc = "\\n".join(chunkstring(self.data.description, 20))
-        fh.write('%s [label="SG: %s\\n%s\n%s" %s];\n' % (
+        fh.write('%s [label="SG: %s\\n%s\\n%s" %s];\n' % (
             self.mn(self.name), self.name, desc, "\n".join(tportstr), self.image()))
 
     def drawSec(self, fh):
