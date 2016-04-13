@@ -498,7 +498,7 @@ class SecurityGroup(Dot):
             tportstr.append("Egress: %s" % eportstr)
         desc = "\\n".join(chunkstring(self.data.description, 20))
         fh.write('%s [label="SG: %s\\n%s\\n%s" %s];\n' % (
-            self.mn(self.name), self.name, desc, "\n".join(tportstr), self.image()))
+            self.mn(self.name), self.name, desc, "\\n".join(tportstr), self.image()))
 
     def drawSec(self, fh):
         global clusternum
