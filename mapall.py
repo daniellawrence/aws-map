@@ -313,7 +313,7 @@ class Instance(Dot):
 
     def drawSec(self, fh):
         fh.write('// Instance %s\n' % self.name)
-        label = "%s\n%s\n%s" % (self.tags('Name'), self.name, self['PrivateIpAddress'])
+        label = "%s\\n%s\\n%s" % (self.tags('Name'), self.name, self['PrivateIpAddress'])
         fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), label, self.image()))
         for sg in self['SecurityGroups']:
             self.connect(fh, self.name, sg['GroupId'])
@@ -395,7 +395,7 @@ class Subnet(Dot):
 
     def drawSec(self, fh):
         fh.write('// Subnet %s\n' % self.name)
-        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), self.name, self.data.cidr_block, self.image()))
+        fh.write('%s [label="%s\\n%s" %s];\n' % (self.mn(self.name), self.name, self.data.cidr_block, self.image()))
         self.connect(fh, self.name, self.data.vpc_id)
 
     def draw(self, fh):
@@ -407,7 +407,7 @@ class Subnet(Dot):
             label = self.name
 
         fh.write('// Subnet %s\n' % self.name)
-        fh.write('%s [label="%s\n%s" %s];\n' % (self.mn(self.name), label, self.data.cidr_block, self.image()))
+        fh.write('%s [label="%s\\n%s" %s];\n' % (self.mn(self.name), label, self.data.cidr_block, self.image()))
         self.connect(fh, self.name, self.data.vpc_id)
 
 
@@ -449,11 +449,11 @@ class Volume(Dot):
                 return
             if self.args.subnet or self.args.vpc:
                 return
-            fh.write('%s [label="Unattached Volume:%s\n%s Gb" %s];\n' % (
+            fh.write('%s [label="Unattached Volume:%s\\n%s Gb" %s];\n' % (
                 self.mn(self.name), self.name, self['Size'], self.image()))
 
     def subclusterDraw(self, fh):
-        fh.write('%s [shape=box, label="%s\n%s Gb"];\n' % (self.mn(self.name), self.name, self['Size']))
+        fh.write('%s [shape=box, label="%s\\n%s Gb"];\n' % (self.mn(self.name), self.name, self['Size']))
         return []
 
 
@@ -497,8 +497,8 @@ class SecurityGroup(Dot):
         if eportstr:
             tportstr.append("Egress: %s" % eportstr)
         desc = "\\n".join(chunkstring(self.data.description, 20))
-        fh.write('%s [label="SG: %s\n%s\n%s" %s];\n' % (
-            self.mn(self.name), self.name, desc, "\n".join(tportstr), self.image()))
+        fh.write('%s [label="SG: %s\\n%s\\n%s" %s];\n' % (
+            self.mn(self.name), self.name, desc, "\\n".join(tportstr), self.image()))
 
     def drawSec(self, fh):
         global clusternum
@@ -508,7 +508,7 @@ class SecurityGroup(Dot):
         fh.write('style=filled; color="grey90";\n')
         fh.write('node [style=filled, color="%s"];\n' % colours[clusternum])
         desc = "\\n".join(chunkstring(self['Description'], 20))
-        fh.write('%s [shape="rect", label="%s\n%s"]\n' % (self.mn(), self.name, desc))
+        fh.write('%s [shape="rect", label="%s\\n%s"]\n' % (self.mn(), self.name, desc))
         if self['IpPermissions']:
             self.genRuleBlock(self['IpPermissions'], 'ingress', fh)
         if self['IpPermissionsEgress']:
@@ -720,7 +720,7 @@ class RouteTable(Dot):
         for rt in self.data.routes:
             if rt.destination_cidr_block is not None:
                 routelist.append(rt.destination_cidr_block)
-        fh.write('%s [label="RT: %s\n%s" %s];\n' % (self.mn(), self.name, ";".join(routelist), self.image()))
+        fh.write('%s [label="RT: %s\\n%s" %s];\n' % (self.mn(), self.name, ";".join(routelist), self.image()))
         for ass in self.data.associations:
             if ass.subnet_id is not None:
                 if objects[ass.subnet_id].inSubnet(self.args.subnet):
@@ -785,7 +785,7 @@ class NetworkInterface(Dot):
 
     def subclusterDraw(self, fh):
         fh.write(
-            '%s [label="NIC: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['PrivateIpAddress'], self.image()))
+            '%s [label="NIC: %s\\n%s" %s];\n' % (self.mn(self.name), self.name, self['PrivateIpAddress'], self.image()))
         externallinks = []
         if self.args.security:
             for g in self['Groups']:
@@ -896,7 +896,7 @@ class LoadBalancer(Dot):
             ports.append(
                 "%s/%s -> %s/%s" % (l.load_balancer_port, l.protocol, l.instance_port, l.instance_protocol))
 
-        fh.write('%s [label="ELB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, "\n".join(ports), self.image()))
+        fh.write('%s [label="ELB: %s\\n%s" %s];\n' % (self.mn(self.name), self.name, "\n".join(ports), self.image()))
         for i in self.data.instances:
             if objects[i.id].inSubnet(self.args.subnet):
                 self.connect(fh, self.name, i.id)
@@ -979,14 +979,14 @@ class Database(Dot):
 
     def drawSec(self, fh):
         imgstr = self.image(["Database-%s" % self['Engine'], 'Database'])
-        fh.write('%s [label="DB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self['Engine'], imgstr))
+        fh.write('%s [label="DB: %s\\n%s" %s];\n' % (self.mn(self.name), self.name, self['Engine'], imgstr))
 
     def draw(self, fh):
         if not self.inVpc(self.args.vpc) or not self.inSubnet(self.args.subnet):
             return
         fh.write('// Database %s\n' % self.name)
         imgstr = self.image(["Database-%s" % self.data.engine, 'Database'])
-        fh.write('%s [label="DB: %s\n%s" %s];\n' % (self.mn(self.name), self.name, self.data.engine, imgstr))
+        fh.write('%s [label="DB: %s\\n%s" %s];\n' % (self.mn(self.name), self.name, self.data.engine, imgstr))
         for subnet in self.data.subnet_group.subnet_ids:
             # if subnet.SubnetStatus == 'Active':
                 if objects[subnet].inSubnet(self.args.subnet):
@@ -1049,7 +1049,7 @@ class ASG(Dot):
         if self.inVpc(self.args.vpc) and self.inSubnet(self.args.subnet):
             fh.write('// ASG %s\n' % self.name)
             imgstr = self.image(["ASG-%s" % self.data.name, 'ASG'])
-            fh.write('%s [label="ASG: %s\n%s" %s];\n' % (self.mn(self.name), self.name, '', imgstr))
+            fh.write('%s [label="ASG: %s\\n%s" %s];\n' % (self.mn(self.name), self.name, '', imgstr))
             for lb in self.data.load_balancers:
                 if objects[lb].inSubnet(self.args.subnet):
                     self.connect(fh, self.name, lb)
