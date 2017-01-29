@@ -31,7 +31,7 @@ all on a single page becomes spaghetti.
 
 ```
 $ ./mapall.py --iterate vpc
-$ ./mapall.py --iterave subnet
+$ ./mapall.py --iterate subnet
 ```
 
 Security Groups
