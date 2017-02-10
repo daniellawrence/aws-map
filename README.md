@@ -13,7 +13,7 @@ running
 -------
 
 ```
-$ ./mapall.py | dot -Tpng > aws-map.png
+$ ./mapall.py --region us-east-1 | dot -Tpng > aws-map.png
 $ eog aws-map.png
 ```
 
