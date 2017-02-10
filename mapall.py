@@ -93,9 +93,12 @@ class Dot(object):
         """ Munge name to be dottable """
         if not s:
             s = self.name
-        s = s.replace('-', '_')
-        s = s.replace("'", '"')
-        return s
+        try:
+            s = s.replace('-', '_')
+            s = s.replace("'", '"')
+            return s
+        except Exception as e:
+            return 'NoName'
 
     ##########################################################################
     def partOfInstance(self, instid):
