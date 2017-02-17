@@ -23,6 +23,19 @@ Options include specifying just one VPC to draw with:
 Or specifying a subnet to draw with:
 ./mapall.py --subnet subnet_123456
 
+If you want to use [virtualenv](http://docs.python-guide.org/en/latest/dev/virtualenvs/):
+
+```
+$ sudo apt-get install -y python-setuptools
+$ virtualenv -p /usr/bin/python2.7 venv
+$ source venv/bin/activate
+$ pip install -r requirements.txt
+$ ./mapall.py --region us-east-1 | dot -Tpng > aws-map.png
+
+# And to leave the virtual environment:
+$ deactivate
+```
+
 Iterating
 ---------
 You can generate a map of each vpc or subnet individually. This is
