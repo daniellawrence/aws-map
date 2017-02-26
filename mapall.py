@@ -1310,9 +1310,12 @@ def parseArgs():
     parser.add_argument(
         '-v', '--verbose', default=False, action='store_true',
         help="Print some details")
-    parser.add_argument(
-        '--region', default=None,
+
+    requiredNamed = parser.add_argument_group('required named arguments')
+    requiredNamed.add_argument(
+        '--region', default=None, required=True,
         help="ec2 region")
+
     args = parser.parse_args()
     nocache = args.nocache
     if args.vpc and not args.vpc.startswith('vpc-'):
