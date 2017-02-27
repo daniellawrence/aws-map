@@ -97,7 +97,7 @@ class Dot(object):
             s = s.replace('-', '_')
             s = s.replace("'", '"')
             return s
-        except Exception as e:
+        except AttributeError as e:
             return 'NoName'
 
     ##########################################################################
