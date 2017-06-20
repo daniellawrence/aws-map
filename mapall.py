@@ -146,7 +146,7 @@ class Dot(object):
         fh.write(self.mn())
 
     ##########################################################################
-    def image(self, names=[]):
+    def image(self, names=[], shape='box', style='solid'):
         if not names:
             names = [self.__class__.__name__]
 
@@ -154,10 +154,10 @@ class Dot(object):
             imgfile = os.path.join(os.path.realpath(os.path.dirname(__file__)), 'images', '%s.png' % name)
 
             if os.path.exists(imgfile):
-                imagestr = ', image="%s", shape=box ' % imgfile
+                imagestr = ', image="%s", style=%s, shape=%s ' % (imgfile, style, shape)
                 break
         else:
-            imagestr = ', shape=box'
+            imagestr = ', style=%s, shape=%s' % (style, shape)
         return imagestr
 
 
@@ -329,11 +329,17 @@ class Instance(Dot):
             return
         fh.write('// Instance %s\n' % self.name)
         fh.write('subgraph cluster_%d {\n' % clusternum)
+
         if 'Name' in self.data.tags:
             label = self.data.tags['Name']
         else:
             label = self.name
-        fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), label, self.image()))
+
+        Style='solid'
+        if self.data.state != 'running':
+            Style = 'dashed'
+
+        fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), label, self.image(style=Style)))
 
         extraconns = []
         for o in objects.values():
