@@ -49,3 +49,10 @@ The program will write the results of the aws query to a .cache
 directory and use that unless you specify --nocache. Cacheing is
 much faster than querying AWS everytime but obviously won't react
 to changes that are made.
+
+Region
+------
+You must indicate a region for the queries.  This can be through the
+--region CLI option, or the AWS_DEFAULT_REGION environment variable.
+If both are set, the CLI opton takes precedence.
+
