@@ -69,3 +69,16 @@ You must indicate a region for the queries.  This can be through the
 --region CLI option, or the AWS_DEFAULT_REGION environment variable.
 If both are set, the CLI opton takes precedence.
 
+
+Thanks 
+----------
+
+With the effort of everyone below this project would not be possible.
+
+* @dwagon
+* @justinholmes
+* @joerayme
+* @hposca
+* @bjorand
+* @ngfw
+
