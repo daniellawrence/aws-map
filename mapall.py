@@ -330,7 +330,7 @@ class Instance(Dot):
         fh.write('// Instance %s\n' % self.name)
         fh.write('subgraph cluster_%d {\n' % clusternum)
         if 'Name' in self.data.tags:
-            label = self.data.tags['Name']
+            label = self.data.tags['Name'] + "\n(" + self.name +")"
         else:
             label = self.name
         fh.write('%s [label="%s" %s];\n' % (self.mn(self.name), label, self.image()))
