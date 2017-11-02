@@ -1315,8 +1315,16 @@ def parseArgs():
         help="Print some details")
 
     requiredNamed = parser.add_argument_group('required named arguments')
+
+    if 'AWS_DEFAULT_REGION' in os.environ:
+        default_region=os.environ['AWS_DEFAULT_REGION']
+        region_required = False
+    else:
+        default_region=False
+        region_required = True
+
     requiredNamed.add_argument(
-        '--region', default=None, required=True,
+        '--region', default=default_region, required=region_required,
         help="ec2 region")
 
     args = parser.parse_args()
