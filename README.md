@@ -4,9 +4,22 @@ Generate basic graphviz/dot maps of your AWS deployments.
 
 installation
 ------------
+
+Debian
 ```
 $ pip install -r requirements.txt
 $ sudo apt-get install graphviz
+```
+
+OSX
+```
+$ pip install -r requirements.txt
+$ brew install graphviz
+```
+
+windows
+```
+https://www.debian.org
 ```
 
 running
@@ -14,7 +27,21 @@ running
 
 ```
 $ ./mapall.py --region us-east-1 | dot -Tpng > aws-map.png
+```
+
+viewing the imaage on linux
+```
 $ eog aws-map.png
+```
+
+viewing the image on OSX
+```
+$ open aws-map.png
+```
+
+viewing the image on windows
+```
+https://www.debian.org
 ```
 
 Options include specifying just one VPC to draw with:
