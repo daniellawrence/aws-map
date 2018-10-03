@@ -96,7 +96,7 @@ class Dot(object):
         try:
             s = s.replace('-', '_')
             s = s.replace("'", '"')
-            return s
+            return '"' + s + '"'
         except AttributeError as e:
             return 'NoName'
 
